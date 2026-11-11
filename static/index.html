@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Signal Desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/riso.css">
+<script>
+/* Signal Desk UI state. One Alpine component; the live stream is read with fetch + a reader. */
+function desk() {
+  return {
+    tab: 'now',
+    connected: false,
+    simTs: '',
+    total: 0,
+    strip: [],
+    markers: [],
+    tail: [],
+    rules: [],                       // active rules (rule engine milestone)
+    scenarios: [],
+    inject: { active: null, remaining_s: 0, cooldown_s: 0 },
+    notice: '',
+    busy: false,
+
+    init() {
+      this.loadScenarios();
+      this.connect();
+    },
+
+    async loadScenarios() {
+      try {
+        const r = await fetch('/api/scenarios', { cache: 'no-store' });
+        const d = await r.json();
+        this.scenarios = d.scenarios.filter(s => s.visitor);
+        this.inject = d.inject;
+      } catch (e) { /* the stream will retry; tiles stay empty until then */ }
+    },
+
+    async connect() {
+      for (;;) {
+        try {
+          const res = await fetch('/api/stream', { cache: 'no-store' });
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+          this.connected = true;
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+            for (const line of lines) {
+              if (!line.startsWith('data: ')) continue;
+              this.handle(JSON.parse(line.slice(6)));
+            }
+          }
+        } catch (e) { /* fall through to reconnect */ }
+        this.connected = false;
+        await new Promise(r => setTimeout(r, 2000));
+      }
+    },
+
+    handle(m) {
+      if (m.type === 'hello' || m.type === 'reset') {
+        this.applyTick(m);
+        this.tail = m.tail || [];
+        if (m.type === 'reset') this.notice = '';
+      } else if (m.type === 'tick') {
+        this.applyTick(m);
+      } else if (m.type === 'events') {
+        this.tail = [...m.events.slice().reverse(), ...this.tail].slice(0, 10);
+      } else if (m.type === 'inject') {
+        this.inject = m;
+      }
+    },
+
+    applyTick(m) {
+      this.simTs = m.sim_ts;
+      this.total = m.total;
+      this.strip = m.strip || [];
+      this.markers = m.markers || [];
+      if (m.inject) {
+        const wasActive = this.inject && this.inject.active;
+        this.inject = m.inject;
+        if (wasActive && !m.inject.active) this.notice = '';
+      }
+    },
+
+    // ---- noise strip
+    get stripMax() {
+      return Math.max(10, ...this.strip.map(b => b.passed + b.filtered));
+    },
+    pct(n) { return (100 * n / this.stripMax).toFixed(1) + '%'; },
+    markerLeft(mk) {
+      const t = mk.ts.slice(0, 16);
+      const i = this.strip.findIndex(b => b.t.slice(0, 16) === t);
+      return i < 0 ? null : (100 * i / this.strip.length).toFixed(2) + '%';
+    },
+
+    // ---- formatting
+    fmt(n) { return Number(n || 0).toLocaleString('en-GB'); },
+    clock(ts, secs) {
+      if (!ts) return '';
+      const d = new Date(Date.parse(ts) + 3600 * 1000);          // CET, like the simulator
+      const s = d.toISOString();
+      return secs ? s.slice(11, 19) : s.slice(11, 16);
+    },
+    sevClass(e) { return e.status === 'resolved' ? 'ok' : e.severity; },
+
+    // ---- break something
+    get injectWait() {
+      if (this.inject && this.inject.active) return `A scenario is playing: about ${Math.ceil(this.inject.remaining_s)} s left.`;
+      if (this.inject && this.inject.cooldown_s > 0) return `Ready again in ${Math.ceil(this.inject.cooldown_s)} s.`;
+      return '';
+    },
+    get canInject() { return !this.busy && !this.injectWait; },
+    openBreak() { this.loadScenarios(); this.$refs.breakDlg.showModal(); },
+    async doInject(id) {
+      this.busy = true;
+      try {
+        const r = await fetch('/api/inject', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scenario_id: id }),
+        });
+        const d = await r.json();
+        if (r.ok) {
+          this.$refs.breakDlg.close();
+          this.notice = `${d.title}: it starts now at ${d.customer} and plays out over about ${Math.round(d.plays_for_s)} seconds.`;
+          this.tab = 'now';
+        } else if (d.inject) {
+          this.inject = d.inject;
+        }
+      } finally { this.busy = false; }
+    },
+
+    async resetDemo() {
+      await fetch('/api/reset', { method: 'POST' });
+      this.notice = '';
+    },
+  };
+}
+</script>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.17.4/dist/cdn.min.js"></script>
+</head>
+<body x-data="desk()">
+
+<header class="topbar">
+  <div class="wrap">
+    <div class="brand">
+      <a class="mark" href="https://barcik.training" target="_blank" rel="noopener">barcik<b>.</b>training</a>
+      <span class="product">Signal Desk</span>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Screens">
+      <button class="tab" role="tab" :aria-selected="tab === 'now'" @click="tab = 'now'">Now</button>
+      <button class="tab" role="tab" :aria-selected="tab === 'proposals'" @click="tab = 'proposals'">Proposals</button>
+    </nav>
+    <div class="tools">
+      <button class="chip" @click="$refs.rulesDlg.showModal()" x-text="`Active rules (${rules.length})`">Active rules (0)</button>
+      <button class="chip" @click="$refs.aiDlg.showModal()" aria-label="About the AI on this page">AI notice</button>
+      <button class="linkish" @click="resetDemo()">Reset demo</button>
+    </div>
+  </div>
+</header>
+
+<!-- ===================== Now ===================== -->
+<main class="wrap" x-show="tab === 'now'">
+  <div class="head">
+    <div class="stat">
+      <b x-text="fmt(total)">0</b>
+      <span>alerts since the demo started</span>
+      <div class="clock" x-show="simTs" x-cloak>
+        Simulated time <span x-text="clock(simTs)"></span>, one minute per second
+        <span x-show="!connected"> (reconnecting)</span>
+      </div>
+    </div>
+    <button class="btn btn-big" @click="openBreak()">Break something</button>
+  </div>
+
+  <p class="notice" x-show="notice" x-cloak x-text="notice"></p>
+
+  <section class="card panel" aria-labelledby="strip-title">
+    <div class="panel-head">
+      <h2 class="section-title" id="strip-title">Alerts per minute</h2>
+      <div class="legend">
+        <span><i style="background: var(--blue)"></i>Reach a human</span>
+        <span x-show="strip.some(b => b.filtered > 0)" x-cloak><i style="background: var(--neutral); opacity: .55"></i>Filtered by rules</span>
+      </div>
+    </div>
+    <div class="strip" role="img" aria-label="Alerts per simulated minute over the last 30 minutes">
+      <template x-for="(b, i) in strip" :key="b.t">
+        <div class="bar" :class="{ now: i === strip.length - 1 }" :title="`${clock(b.t)}  ${b.passed} passed, ${b.filtered} filtered`">
+          <div class="pass" :style="`height: ${pct(b.passed)}`"></div>
+          <div class="filt" :style="`height: ${pct(b.filtered)}`"></div>
+        </div>
+      </template>
+      <template x-for="mk in markers" :key="mk.ts + mk.label">
+        <div class="marker" x-show="markerLeft(mk) !== null" :style="`left: ${markerLeft(mk)}`"><span x-text="mk.label"></span></div>
+      </template>
+    </div>
+    <div class="strip-axis"><span>30 min ago</span><span>now</span></div>
+  </section>
+
+  <!-- INCIDENTS: the AI triage milestone renders incident cards inside #incidents -->
+  <section class="incidents" id="incidents" aria-labelledby="inc-title">
+    <h2 class="section-title" id="inc-title">Needs a human</h2>
+    <div class="empty-state">Nothing needs a human right now.</div>
+  </section>
+
+  <section class="tail" aria-labelledby="tail-title">
+    <div class="tail-head">
+      <h2 id="tail-title">Raw alerts</h2>
+      <span>latest 10, all sources</span>
+    </div>
+    <ul class="lines">
+      <template x-for="e in tail" :key="e.id">
+        <li>
+          <span class="t" x-text="clock(e.ts, true)"></span>
+          <span class="sev" :class="sevClass(e)"></span>
+          <span class="v" x-text="e.vendor"></span>
+          <span class="h" x-text="e.host"></span>
+          <span class="msg" x-text="e.status === 'resolved' ? e.title : `${e.native_severity}  ${e.title}`"></span>
+        </li>
+      </template>
+    </ul>
+  </section>
+</main>
+
+<!-- ===================== Proposals ===================== -->
+<main class="wrap" x-show="tab === 'proposals'" x-cloak>
+  <section class="card prop-intro">
+    <h1>Let AI study 30 days of history</h1>
+    <p>The AI reads a month of alerts from every source, proposes a few plain rules and tests each one against the history before you decide.</p>
+    <button class="btn btn-big" disabled>Ask AI to study 30 days of history</button>
+    <p class="later">Not switched on in this build yet.</p>
+  </section>
+</main>
+
+<!-- ===================== dialogs ===================== -->
+<dialog class="sheet" x-ref="breakDlg" aria-labelledby="break-title">
+  <form method="dialog"><button class="d-close">Close</button></form>
+  <div class="sheet-body">
+    <h2 id="break-title">Break something</h2>
+    <p class="sub">Pick one. It plays out in about a minute, among all the usual noise.</p>
+    <div class="tiles">
+      <template x-for="s in scenarios" :key="s.id">
+        <button class="tile" :disabled="!canInject" @click="doInject(s.id)">
+          <b x-text="s.tile_title"></b>
+          <span x-text="s.tile_blurb"></span>
+        </button>
+      </template>
+    </div>
+    <p class="wait" x-text="injectWait"></p>
+  </div>
+</dialog>
+
+<dialog class="sheet small" x-ref="rulesDlg" aria-labelledby="rules-title">
+  <form method="dialog"><button class="d-close">Close</button></form>
+  <div class="sheet-body">
+    <h2 id="rules-title">Active rules</h2>
+    <template x-if="rules.length === 0">
+      <p class="rules-empty">No rules are live yet. Accepted proposals appear here, each with its own on and off switch.</p>
+    </template>
+  </div>
+</dialog>
+
+<dialog class="sheet small" x-ref="aiDlg" aria-labelledby="ai-title">
+  <form method="dialog"><button class="d-close">Close</button></form>
+  <div class="sheet-body">
+    <h2 id="ai-title">AI notice</h2>
+    <p>A live AI model writes the incident summaries and rule proposals on this page. All alerts, customers and hosts are synthetic. Vendor names are used for illustration only; there is no affiliation with or endorsement by those vendors.</p>
+  </div>
+</dialog>
+
+</body>
+</html>

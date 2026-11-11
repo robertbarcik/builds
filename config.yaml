@@ -1,0 +1,56 @@
+# Signal Desk configuration. Model IDs are checked against OpenRouter's live list by
+# scripts/verify_models.py; prices are USD per 1M tokens as listed there on 2026-11-11.
+
+server:
+  host: 127.0.0.1
+  port: 7870
+
+openrouter:
+  base_url: https://openrouter.ai/api/v1
+
+models:
+  # fast, cheap, non-reasoning, reliable json_object output
+  triage:
+    id: openai/gpt-4.1-mini
+    max_tokens: 900
+    timeout_s: 20
+    temperature: 0.2
+  # short streamed incident summaries (same model: low latency to first token)
+  render:
+    id: openai/gpt-4.1-mini
+    max_tokens: 350
+    timeout_s: 20
+    temperature: 0.3
+  # strong tool-calling model for the batch rule-engineer loop
+  engineer:
+    id: anthropic/claude-sonnet-5.5
+    max_tokens: 2500
+    timeout_s: 60
+    temperature: 0.2
+
+prices:
+  openai/gpt-4.1-mini: {input: 0.40, output: 1.60}
+  anthropic/claude-sonnet-5.5: {input: 2.00, output: 10.00}
+
+caps:
+  calls_per_hour_global: 900
+  usd_per_hour_global: 2.00
+  calls_per_hour_session: 450
+  usd_per_hour_session: 1.00
+  engineer_runs_per_10_min: 1
+  engineer_max_tool_calls: 14
+  engineer_max_seconds: 180
+  triage_interval_s: 8
+  triage_max_lines: 60
+
+sim:
+  seed: 20261111
+  speed: 60                       # simulated seconds per real second
+  history_days: 30
+  history_end: "2026-11-10T00:00:00Z"
+  live_start: "2026-11-10T09:30:00Z"
+  live_rate_multiplier: 4.5      # live baseline is denser than history (4-8 events per real s)
+  auto_scenario_every_min: 180    # simulated minutes between background scenarios (~3 real min)
+  scenario_span_min: 75           # live scenarios are compressed to this many simulated minutes
+  inject_cooldown_s: 30           # real seconds after an injected scenario finishes
+  tick_ms: 250
