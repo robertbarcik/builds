@@ -77,6 +77,55 @@ def search_kb(query: str) -> str:
         return json.dumps({"error": f"Knowledge base unavailable: {e}"})
 
 
+def _gated(name: str, args: dict, handler) -> str:
+    """Server actions go through the same human gate as the web app. This
+    process has no operator screen, so held actions come back "not executed"
+    (the gate fails closed) — only the direct tier works over MCP."""
+    from app.approvals import run_tool
+
+    result, _ = run_tool(name, args, handler, session_id="mcp", channel="mcp")
+    return result
+
+
+@mcp.tool()
+def list_servers(status: str = "active") -> str:
+    """List the server fleet: role, size, site, status, monthly cost. status: active/all."""
+    from app.tools import servers
+    return servers.list_servers(status=status)
+
+
+@mcp.tool()
+def provision_server(size: str = "small", role: str = "app", site: str = "frankfurt") -> str:
+    """Order a new server. small runs directly; medium/large need a human approval in the web UI."""
+    from app.tools import servers
+    return _gated("provision_server", {"size": size, "role": role, "site": site},
+                  lambda a: servers.provision_server(**a))
+
+
+@mcp.tool()
+def reboot_server(server_name: str, reason: str) -> str:
+    """Reboot a server. Needs a human approval in the web UI (not available on this channel)."""
+    from app.tools import servers
+    return _gated("reboot_server", {"server_name": server_name, "reason": reason},
+                  lambda a: servers.reboot_server(**a))
+
+
+@mcp.tool()
+def terminate_server(server_name: str, reason: str) -> str:
+    """Terminate a server. Needs a human approval in the web UI (not available on this channel)."""
+    from app.tools import servers
+    return _gated("terminate_server", {"server_name": server_name, "reason": reason},
+                  lambda a: servers.terminate_server(**a))
+
+
+@mcp.tool()
+def migrate_server(server_name: str, target_site: str, reason: str) -> str:
+    """Move a server to frankfurt/vienna/bratislava. Needs a human approval in the web UI (not available on this channel)."""
+    from app.tools import servers
+    return _gated("migrate_server", {"server_name": server_name, "target_site": target_site, "reason": reason},
+                  lambda a: servers.migrate_server(**a))
+
+
 @mcp.tool()
 def get_dashboard_summary() -> str:
     """Get a summary of all incidents — counts by status, by priority, and the 5 most recent tickets."""

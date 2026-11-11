@@ -110,6 +110,9 @@ Standard OpenAI-style function calling in a loop:
 | `lookup_asset` | SQLite `employees`/`assets` | equipment by employee id |
 | `create_incident` | SQLite `incidents` | files a ticket, returns `INC-000nn` |
 | `escalate_ticket` | SQLite | status → escalated with reason |
+| `list_servers` | SQLite `servers` | the fleet: role, size, site, status, cost — read-only |
+| `provision_server` | SQLite | orders a server; **small runs directly, medium/large wait for a human** |
+| `reboot_server` · `terminate_server` · `migrate_server` | SQLite | actions with consequences — **always wait for a human** |
 
 Implementation details worth pointing at:
 
@@ -120,6 +123,64 @@ Implementation details worth pointing at:
   tool result produces a malformed history the API rejects.
 - **Tool errors are data.** A tool that raises returns `{"error": …}` to the model instead of
   crashing the request; the model can recover or apologise.
+
+### Human oversight — the tool call the model cannot finish (`app/approvals.py`, `app/tools/servers.py`)
+
+The three gates check what the model *says*. This one is about what it *does*. The agent can
+operate a small server fleet, and its tools come in two tiers:
+
+| Tier | Calls | What happens |
+|---|---|---|
+| direct | `list_servers`, `provision_server(size="small")` | ordinary function call, the model's decision is enough |
+| held for a human | `reboot_server`, `terminate_server`, `migrate_server`, `provision_server(size="medium"/"large")` | the call is **parked**, a confirmation window pops up, the handler runs only after a click on Approve |
+
+```
+ agent: tool_call reboot_server(srv-db-01)
+   → run_tool(): APPROVAL_POLICY says "held" → builds the card (server, site, reason, impact)
+   → pending approval registered · /ws push approval_requested → window on the operator's screen
+   → the pipeline's worker thread WAITS (threading.Event, 120 s)
+ human: clicks Approve / Deny  → POST /api/approvals/{id}
+   → approved: handler runs, result carries "human_approval: approved … after 6.2 s"
+   → denied / expired / nobody connected: handler never runs, result is status "not_executed"
+ agent: reads the tool result and reports exactly that  → gate 2 → judge → audit log
+```
+
+What to point at:
+
+1. **The tier is code, not prompt.** `APPROVAL_POLICY` in `servers.py` decides from the tool name
+   *and its arguments* — a small server is within the agent's own limit, a large one is not. The
+   prompt only tells the model what to expect, so it announces the window instead of asking
+   "are you sure?". Delete that paragraph from the prompt and the gate still holds.
+2. **The approval travels on a channel the model cannot write to.** It is an HTTP call from the
+   operator's browser. A typed or spoken *"yes, I confirm"* goes to the model — and proves
+   nothing, because the model is the party we are overseeing. Try it by voice: the agent answers
+   *"I still need that click in the confirmation window."*
+3. **It fails closed.** Deny, a 120 s timeout, or no screen connected at all (MCP, a bare `curl`)
+   → `not_executed`. Wrong server name → an error straight back to the model; a human is only
+   asked about calls that could actually run.
+4. **The human sees the call, not the conversation.** The window shows the concrete action, the
+   target, the model's stated reason and the impact — enough to decide, and a defence against
+   rubber-stamping a vague "shall I proceed?".
+5. **One gate for every channel.** Threads, live voice, the realtime voice bridge (where the
+   *text* guardrails are bypassed — this gate is not) and MCP all go through `run_tool`.
+6. **It is audited.** Each held call leaves `note_human_approval: approved|denied|expired · tool ·
+   target · wait` on the turn's audit record; the guardrail chart has two new bars.
+
+**Where the AI Act comes in — with care.** Article 14 of the AI Act requires *high-risk* AI
+systems to be designed so that natural persons can effectively oversee them, with measures
+"commensurate with the risks, level of autonomy and context of use", including the ability to
+disregard or override the output and to stop the system (Art. 14(3), 14(4)(d)–(e)). It does not
+prescribe a click before every action — the only place the Act itself demands confirmation by
+(two) humans is remote biometric identification (Art. 14(5)). And an IT service desk is not a
+high-risk system by default; the nearest Annex III entry is AI used as a *safety component* in
+the management of critical digital infrastructure (Annex III, point 2). So the lecture claim is:
+*this is one engineering pattern for human oversight, applied where the autonomy and the damage
+potential are highest* — not "the AI Act requires this pop-up". (Not legal advice.)
+
+**Ask the room:** *"Why not just tell the model to always ask before rebooting?"* — Because then
+the control lives in the thing being controlled. A prompt injection, a hallucinated "the user
+confirmed", or a model upgrade can remove it. And: *"What stops the operator from clicking
+Approve on everything?"* — Nothing technical. Art. 14(4)(b) names it: automation bias.
 
 ### Gate 2 — static output validator (`output_validator.py`)
 
@@ -411,6 +472,17 @@ What to point at, in order:
    the answer sentence for "can we speak Slovak?"; the backend agent is told to answer in the
    caller's language and translate the English tool results.
 
+9. **Human approval by voice.** *"Reboot srv-db-01, the database is hanging."* The delegation
+   runs as usual until the agent calls `reboot_server` — then the pipeline parks on the human
+   gate (see chapter 2). The bridge sends a `commentary.append` *immediately* ("I can do that; a
+   confirmation window has just popped up, please click Approve there, I'll wait"), so the voice
+   announces the window instead of going silent. On the click a second `commentary.append`
+   ("thanks for the confirmation, going ahead") and, a few seconds later, the normal result.
+   One delegation, three spoken moments. If the caller says *"yes, go ahead"* instead of
+   clicking, the model delegates again — the bridge sees an approval is open, does **not** start
+   a second pipeline run, and answers that the click is still needed (`delegation_parked` in the
+   call log). Stage line: `⚙ reboot_server… · ⏸ waiting for a human click… → human ✓ approved 6.2s`.
+
 **A lesson learned the hard way:** appends are injected on the *session timeline*, and the
 timeline only advances with input audio. The first headless test stopped sending audio after the
 utterance, and the answer was never spoken (`error: context_injection_incomplete` on close). A
@@ -426,6 +498,15 @@ test and be accountable for. Client delegation is more code and the better archi
 ```bash
 ./venv/bin/python scripts/live_smoke.py "Hi, this is Anna Kovacova, EMP-001, my laptop screen flickers — open a ticket please."
 ```
+
+```bash
+# the human gate without a browser: the script clicks Approve 8 s after the window opens
+./venv/bin/python scripts/live_smoke.py --approve 8 --seconds 60 --pause 5 \
+  "Please reboot the server S R V D B zero one, the database is hanging. || Yes, go ahead, I confirm."
+```
+
+(`--deny 8` for the other branch; with neither flag the gate fails closed, because nobody is
+there to ask.)
 
 Synthesises the caller with TTS, streams it into a Live session over the primary WebSocket, and
 runs the **same** `LiveBridge` that serves the UI. Thirty seconds of log lines show the whole
@@ -461,6 +542,11 @@ Say this out loud before someone else does:
   queue. FLAGs are shown, not escalated.
 - Conversation memory is an in-process dict — one server, no persistence, no auth. The tool
   endpoints (`/api/voice/tool`, `/api/simulation/*`) are open to whoever can reach the port.
+- The human gate does not know *who* clicked. `POST /api/approvals/{id}` is as open as the other
+  endpoints: no login, no role check, no four-eyes rule, and a pending approval lives in process
+  memory (a restart drops it — safely, the action never runs). Production needs an authenticated
+  approver, a durable queue and separation between requester and approver.
+- The server fleet is six rows in SQLite; "rebooting" is a timestamp.
 - SQLite in WAL mode handles the demo's concurrency; it would not handle a call centre.
 - The simulation is theatre: weighted random events, not a model of a network.
 - Costs are a hard-coded price table; update it at demo time.
@@ -489,9 +575,14 @@ tool (four files, see CLAUDE.md); make the SLA radar honour service hours; add a
 9. **Voice orb** (gpt-live-1) → ask the SLA question aloud → hear the holding phrase, watch the
    `⟶ backend · gate one ✓ · ⚙ check_sla ✓ · judge pass` line and the green pulse → then
    *"open a ticket, my laptop screen flickers"* → the card appears while the model confirms it.
-10. **Shift-click the orb**, repeat one question on gpt-realtime → same answer, no gates: point at
+10. Still by voice: *"which servers are running?"* (card, direct) → *"order a small test server in
+    Bratislava"* (direct) → *"reboot srv-db-01, the database is hanging"* → the voice announces
+    the **confirmation window** and waits → say *"yes, go ahead"* first (it insists on the click)
+    → click **Approve** → *"thanks for the confirmation…"*. Then *"terminate srv-app-02"* and
+    click **Deny**. Reset the fleet afterwards: `curl -X POST localhost:7860/api/servers/reset`.
+11. **Shift-click the orb**, repeat one question on gpt-realtime → same answer, no gates: point at
     the two voice buckets in the guardrail chart.
-11. **Ω audit chat** → *"what did the guardrails block today?"* — including step 3.
+12. **Ω audit chat** → *"what did the guardrails block today?"* — including step 3.
 
 Cloud cost of the whole run: about a cent of tokens plus roughly five cents per voice minute.
 
@@ -510,11 +601,13 @@ app/
   voice.py                generation one: Realtime secret minting, tool bridge, screen tools
   voice_live.py           generation two: Live session creation, sideband bridge, delegation
   audit_chat.py           meta-agent over the audit log
+  approvals.py            human gate: run_tool, pending approvals, /api/approvals, /api/servers
   ops/simulation.py       event catalogue, storms, auto-filed tickets
   ops/sentinel.py         proactive watcher loop
   ops/metrics.py          cost table, record_llm_usage, timeline / guardrails / radar / costs
   reports/                handover writer, incident clustering (embeddings + union-find)
-  tools/                  check_sla, create/escalate incident, lookup_asset, search_kb
+  tools/                  check_sla, create/escalate incident, lookup_asset, search_kb,
+                          servers (fleet tools + APPROVAL_POLICY risk tiers)
   guardrails/             static_filters (gate 1), output_validator (gate 2), llm_judge (gate 3),
                           pipeline (orchestration), audit (JSONL)
   prompts/                agent, judge, sentinel, handover, audit_chat, voice (realtime), voice_live

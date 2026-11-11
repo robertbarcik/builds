@@ -1404,6 +1404,81 @@
         }
         #voice-toast { display: none; }
 
+        /* ── Human approval: the one window the model cannot click ──
+           Sits above everything. No close button, no Escape, no click-away:
+           it leaves only through Approve, Deny or the timeout. */
+        #approval-layer {
+            position: fixed;
+            inset: 0;
+            z-index: 300;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            background: rgba(8, 10, 14, 0.38);
+            backdrop-filter: blur(2px);
+            -webkit-backdrop-filter: blur(2px);
+        }
+        #approval-layer.open { display: flex; animation: apFade 0.25s ease; }
+        @keyframes apFade { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes apIn { from { opacity: 0; transform: translateY(14px) scale(0.96); } to { opacity: 1; transform: none; } }
+        @keyframes apGlow {
+            0%, 100% { box-shadow: 0 0 0 1px rgba(232,160,64,0.55), 0 0 34px rgba(232,160,64,0.22), 0 18px 60px rgba(0,0,0,0.5); }
+            50%      { box-shadow: 0 0 0 1px rgba(232,160,64,0.9),  0 0 60px rgba(232,160,64,0.42), 0 18px 60px rgba(0,0,0,0.5); }
+        }
+        .approval-card {
+            width: 430px;
+            max-width: calc(100vw - 40px);
+            background: rgba(20, 22, 20, 0.97);
+            color: rgba(255,255,255,0.86);
+            border-radius: 16px;
+            padding: 24px 28px 0;
+            overflow: hidden;
+            font-size: 13px;
+            line-height: 1.5;
+            animation: apIn 0.35s cubic-bezier(0.16, 1, 0.3, 1), apGlow 2.2s ease-in-out infinite;
+        }
+        .approval-card.danger { animation-name: apIn, apGlowRed; }
+        @keyframes apGlowRed {
+            0%, 100% { box-shadow: 0 0 0 1px rgba(224,96,80,0.6), 0 0 34px rgba(224,96,80,0.25), 0 18px 60px rgba(0,0,0,0.5); }
+            50%      { box-shadow: 0 0 0 1px rgba(224,96,80,0.95), 0 0 60px rgba(224,96,80,0.45), 0 18px 60px rgba(0,0,0,0.5); }
+        }
+        .ap-head { display: flex; justify-content: space-between; align-items: center; font-size: 10.5px; letter-spacing: 3.5px; text-transform: uppercase; color: #e8a040; }
+        .approval-card.danger .ap-head { color: #e87060; }
+        .ap-timer { font-family: 'SF Mono', 'Menlo', monospace; letter-spacing: 0.5px; color: rgba(255,255,255,0.45); }
+        .ap-action { font-size: 25px; font-weight: 300; letter-spacing: -0.4px; margin: 12px 0 2px; color: #fff; }
+        .ap-action b { font-weight: 500; font-family: 'SF Mono', 'Menlo', monospace; font-size: 21px; }
+        .ap-who { font-size: 11.5px; color: rgba(255,255,255,0.45); margin-bottom: 14px; }
+        .ap-who code { font-family: 'SF Mono', 'Menlo', monospace; color: rgba(255,255,255,0.7); }
+        .ap-row { display: flex; gap: 12px; padding: 6px 0; border-top: 1px solid rgba(255,255,255,0.07); }
+        .ap-k { min-width: 74px; flex-shrink: 0; font-size: 10.5px; letter-spacing: 0.6px; text-transform: uppercase; color: rgba(255,255,255,0.38); padding-top: 2px; }
+        .ap-v { flex: 1; word-break: break-word; }
+        .ap-impact { margin-top: 12px; padding: 9px 12px; border-radius: 9px; background: rgba(232,160,64,0.11); color: #f0c078; font-size: 12px; }
+        .approval-card.danger .ap-impact { background: rgba(224,96,80,0.13); color: #f0a090; }
+        .ap-buttons { display: flex; gap: 12px; margin: 18px 0 16px; }
+        .ap-btn {
+            flex: 1; padding: 12px 0; border-radius: 10px; border: 1px solid rgba(255,255,255,0.14);
+            background: transparent; color: rgba(255,255,255,0.8); font: inherit; font-size: 13.5px;
+            letter-spacing: 0.4px; cursor: pointer; transition: background 0.15s, border-color 0.15s, transform 0.1s;
+        }
+        .ap-btn:hover { background: rgba(255,255,255,0.07); }
+        .ap-btn:active { transform: scale(0.98); }
+        .ap-btn.approve { background: #3f8f55; border-color: #3f8f55; color: #fff; font-weight: 500; }
+        .ap-btn.approve:hover { background: #4aa364; }
+        .approval-card.danger .ap-btn.approve { background: #c2493a; border-color: #c2493a; }
+        .approval-card.danger .ap-btn.approve:hover { background: #d65a4a; }
+        .ap-btn:disabled { opacity: 0.45; cursor: default; }
+        .ap-foot { font-size: 10.5px; color: rgba(255,255,255,0.32); text-align: center; margin-bottom: 14px; }
+        .ap-bar { height: 3px; margin: 0 -28px; background: rgba(255,255,255,0.07); }
+        .ap-bar > div { height: 100%; width: 100%; background: #e8a040; transform-origin: left; }
+        .approval-card.danger .ap-bar > div { background: #e06050; }
+        .approval-card.resolved { animation: none; opacity: 0; transform: scale(0.96); transition: opacity 0.3s, transform 0.3s; }
+        .badge-running { background: rgba(90,154,94,0.15); color: #4e8f5c; }
+        .badge-rebooting, .badge-migrating, .badge-provisioning { background: rgba(232,160,64,0.16); color: #c9882a; }
+        .badge-terminated, .badge-denied, .badge-expired, .badge-unavailable { background: rgba(224,96,80,0.15); color: #c05050; }
+        .badge-approved { background: rgba(90,154,94,0.15); color: #4e8f5c; }
+
         /* ── Data cards: a tool result materialises on the canvas and stays until closed ── */
         .datacard {
             position: fixed;
@@ -1596,6 +1671,7 @@
 </head>
 <body>
     <div id="brand">mu</div>
+    <div id="approval-layer" onclick="event.stopPropagation()"></div>
     <div id="security-msg"></div>
     <div id="security-panel-overlay" onclick="closeSecurityPanel()"></div>
     <div id="security-panel">
@@ -1642,6 +1718,10 @@
             <button class="guide-ask" onclick="askFromGuide(this.dataset.q)" data-q="What equipment is assigned to EMP-008?">What equipment is assigned to EMP-008?<span class="guide-why">lookup_asset → the e-mail counts as an authorised disclosure</span></button>
             <button class="guide-ask" onclick="askFromGuide(this.dataset.q)" data-q="What tickets are currently open?">What tickets are currently open?<span class="guide-why">list_incidents → the live queue</span></button>
             <button class="guide-ask" onclick="askFromGuide(this.dataset.q)" data-q="Our email server in building B is down and 50 users are affected. Reporter is John Smith. Please open a high priority ticket.">Open a high priority ticket: email server down, 50 users<span class="guide-why">create_incident → card in the thread, ticket on the radar</span></button>
+            <button class="guide-ask" onclick="askFromGuide(this.dataset.q)" data-q="Which servers are running right now?">Which servers are running right now?<span class="guide-why">list_servers → direct tier, no human needed</span></button>
+            <button class="guide-ask" onclick="askFromGuide(this.dataset.q)" data-q="Order a small test server in Bratislava.">Order a small test server in Bratislava.<span class="guide-why">provision_server(small) → within the agent's own limit, runs directly</span></button>
+            <button class="guide-ask" onclick="askFromGuide(this.dataset.q)" data-q="Please reboot srv-db-01, the database is hanging.">Please reboot srv-db-01, the database is hanging.<span class="guide-why">reboot_server → the call is held, a confirmation window pops up, the agent waits for your click</span></button>
+            <button class="guide-ask" onclick="askFromGuide(this.dataset.q)" data-q="Terminate srv-app-02, we no longer need it.">Terminate srv-app-02, we no longer need it.<span class="guide-why">terminate_server → irreversible; try Deny and see what the agent reports</span></button>
             <button class="guide-ask" onclick="askFromGuide(this.dataset.q)" data-q="How do I set up MFA on my phone?">How do I set up MFA on my phone?<span class="guide-why">search_kb → RAG over the knowledge base</span></button>
             <div class="guide-note">By voice: "what can you help me with", "what's open right now", "open a ticket, my laptop screen flickers", "escalate the VPN ticket".</div>
         </div>
@@ -2801,8 +2881,101 @@
                 case 'voice_delegation': onVoiceDelegation(d); break;
                 case 'voice_closed':     onVoiceClosed(d); break;
                 case 'voice_error':      setVoiceHint('live: ' + (d.error || 'error')); wireAdd('block', 'voice error · ' + (d.error || '')); break;
+                case 'approval_requested': openApproval(d, true); break;
+                case 'approval_resolved':  onApprovalResolved(d); break;
             }
         }
+
+        /* ── Human approval ───────────────────────────────────────────
+           The agent CALLED a high-impact tool; the backend is holding the
+           call (the pipeline's thread is parked) until this window answers
+           POST /api/approvals/{id}. The model has no way to reach that
+           endpoint — that is the whole point. */
+        const approvalLayer = document.getElementById('approval-layer');
+        const approvalCards = {};   // id -> { el, timer }
+        const AP_VERB = { reboot: 'Reboot', terminate: 'Terminate', migrate: 'Move', provision: 'Order' };
+        const AP_CHANNEL = { voice: 'the voice agent', 'voice-realtime': 'the voice agent (realtime)', text: 'the desk agent in a thread', mcp: 'an MCP client' };
+
+        function openApproval(d, announce) {
+            if (!d || !d.id || approvalCards[d.id]) return;
+            const danger = d.action === 'terminate';
+            const el = document.createElement('div');
+            el.className = 'approval-card' + (danger ? ' danger' : '');
+            const rows = (d.details || []).map(([k, v]) => `<div class="ap-row"><span class="ap-k">${esc(k)}</span><span class="ap-v">${esc(v)}</span></div>`).join('');
+            el.innerHTML = `
+                <div class="ap-head"><span>&#9888; human approval required</span><span class="ap-timer"></span></div>
+                <div class="ap-action">${esc(AP_VERB[d.action] || d.action)} <b>${esc(d.target || '')}</b></div>
+                <div class="ap-who">requested by ${esc(AP_CHANNEL[d.channel] || d.channel || 'the agent')} · tool call <code>${esc(d.tool)}</code> is on hold</div>
+                ${rows}
+                ${d.impact ? `<div class="ap-impact">${esc(d.impact)}</div>` : ''}
+                <div class="ap-buttons">
+                    <button class="ap-btn deny">Deny</button>
+                    <button class="ap-btn approve">${danger ? 'Approve termination' : 'Approve'}</button>
+                </div>
+                <div class="ap-foot">The agent is waiting. Nothing happens until you click.</div>
+                <div class="ap-bar"><div></div></div>`;
+            const total = d.timeout_s || 120;
+            let left = d.remaining_s != null ? d.remaining_s : total;
+            const timerEl = el.querySelector('.ap-timer');
+            const bar = el.querySelector('.ap-bar > div');
+            const tick = () => {
+                timerEl.textContent = Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0');
+                bar.style.transform = `scaleX(${Math.max(0, left / total)})`;
+                if (left > 0) left -= 1;
+            };
+            tick();
+            const timer = setInterval(tick, 1000);
+            el.querySelector('.deny').addEventListener('click', () => decideApproval(d.id, 'deny'));
+            el.querySelector('.approve').addEventListener('click', () => decideApproval(d.id, 'approve'));
+            approvalCards[d.id] = { el, timer };
+            approvalLayer.appendChild(el);
+            approvalLayer.classList.add('open');
+            if (announce) {
+                wireAdd('flag', `human approval required · ${d.action} ${d.target} · ${d.tool} on hold`);
+                if (!audioMuted) {
+                    try { const t = getAudioCtx().currentTime; playTone(660, 0.14, t, 0.06); playTone(880, 0.2, t + 0.16, 0.06); } catch (e) { /* no audio */ }
+                }
+            }
+        }
+
+        async function decideApproval(id, decision) {
+            const c = approvalCards[id];
+            if (!c) return;
+            c.el.querySelectorAll('.ap-btn').forEach(b => { b.disabled = true; });
+            try {
+                const res = await fetch('/api/approvals/' + id, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ decision }),
+                });
+                /* 404 = answered elsewhere or expired; the resolved push (or this) clears the card */
+                if (!res.ok) closeApproval(id);
+            } catch (e) {
+                c.el.querySelectorAll('.ap-btn').forEach(b => { b.disabled = false; });
+            }
+        }
+
+        function closeApproval(id) {
+            const c = approvalCards[id];
+            if (!c) return;
+            clearInterval(c.timer);
+            delete approvalCards[id];
+            c.el.classList.add('resolved');
+            setTimeout(() => {
+                c.el.remove();
+                if (!Object.keys(approvalCards).length) approvalLayer.classList.remove('open');
+            }, 300);
+        }
+
+        function onApprovalResolved(d) {
+            closeApproval(d.id);
+            const secs = ((d.wait_ms || 0) / 1000).toFixed(1) + 's';
+            if (d.decision === 'approved') wireAdd('pass', `human approved · ${d.action} ${d.target} · after ${secs} · tool call released`);
+            else wireAdd('block', `human ${d.decision} · ${d.action} ${d.target} · after ${secs} · tool call NOT executed`);
+        }
+
+        /* A reloaded page picks its open confirmation windows up again */
+        fetch('/api/approvals').then(r => r.json()).then(d => (d.pending || []).forEach(p => openApproval(p, false))).catch(() => {});
 
         /* ── Ambient telemetry ── */
         const telemetryLayer = document.getElementById('telemetry-layer');
@@ -2997,6 +3170,8 @@
             authorized_disclosure: 'authorized disclosure',
             bypassed_realtime: 'voice · no guardrails (realtime)',
             voice_live_guarded: 'voice · guardrails applied (live)',
+            human_approved: 'human approved (server action)',
+            human_denied: 'human denied / no answer',
         };
         const GUARDRAIL_COLORS = {
             injection: '#e06050', input_blocked: '#e06050', pii_redacted: '#e8a040',
@@ -3004,6 +3179,7 @@
             judge_block: '#e06050', judge_unavailable: '#c9982a',
             authorized_disclosure: '#5a9a5e', bypassed_realtime: '#8a6ab8',
             voice_live_guarded: '#4d8a94',
+            human_approved: '#5a9a5e', human_denied: '#c9982a',
         };
 
         function renderGuardrailBars(counts) {
@@ -3692,6 +3868,25 @@
         const STATUS_BADGE = s => `<span class="badge badge-${esc((s || 'open').toLowerCase())}">${esc(s || '')}</span>`;
         const kv = (k, v) => v == null || v === '' ? '' : `<div class="dc-row"><span class="dc-k">${esc(k)}</span><span class="dc-v">${v}</span></div>`;
 
+        /* One card shape for every server action: executed (with the human's
+           approval, if one was needed) or not executed (denied / expired). */
+        function serverActionCard(d) {
+            if (d.status === 'not_executed') {
+                return {
+                    title: `${esc(d.action || '')} ${esc(d.name || '')} · not executed`,
+                    html: kv('human', STATUS_BADGE(d.decision)) + kv('result', 'nothing was changed'),
+                };
+            }
+            return {
+                title: `${esc(d.action || '')} · ${esc(d.name || '')}`,
+                html: kv('status', STATUS_BADGE(d.server_status)) + kv('size', esc(d.size ? `${d.size} · ${d.spec || ''}` : ''))
+                    + kv('site', esc(d.from_site ? `${d.from_site} → ${d.site}` : d.site))
+                    + kv('cost', d.monthly_cost_eur != null ? esc(d.monthly_cost_eur + ' EUR / month') : '')
+                    + kv('reason', esc(d.reason))
+                    + kv('human', d.human_approval ? STATUS_BADGE('approved') + ' ' + esc(d.human_approval.replace('approved by a human operator ', '')) : '<span class="dc-src">not required · direct tier</span>'),
+            };
+        }
+
         const CARD_RENDERERS = {
             list_incidents: (a, d) => {
                 const t = d.tickets || [];
@@ -3730,6 +3925,14 @@
                 const recent = (d.recent_flagged || []).slice(0, 3).map(f => `<div class="dc-line"><span class="dc-sum"><span class="dc-src">${esc((f.timestamp || '').slice(11, 16))} · ${esc(f.judge || '')}</span><div class="dc-snip">${esc((f.user_input || '').slice(0, 90))}</div></span></div>`).join('');
                 return { title: `guardrails · last ${d.hours || 24} h · ${d.total_interactions || 0} interactions`, html: (bars || '<div class="dc-snip">quiet — nothing triggered</div>') + recent };
             },
+            list_servers: (a, d) => ({
+                title: `servers · ${d.total ?? 0} · ${d.monthly_cost_eur ?? 0} EUR/month`,
+                html: (d.servers || []).map(s => `<div class="dc-line"><span class="dc-id" style="min-width:84px">${esc(s.name)}</span><span class="dc-sum">${esc(s.role)} · ${esc(s.size)}<br><span class="dc-src">${esc(s.site)}</span></span>${STATUS_BADGE(s.status)}</div>`).join('') || '<div class="dc-snip">no servers</div>',
+            }),
+            provision_server: (a, d) => serverActionCard(d),
+            reboot_server: (a, d) => serverActionCard(d),
+            terminate_server: (a, d) => serverActionCard(d),
+            migrate_server: (a, d) => serverActionCard(d),
             search_kb: (a, d) => ({
                 title: `knowledge base · "${esc((a.query || '').slice(0, 40))}"`,
                 html: (d.results || []).map(r => `<div class="dc-line"><span class="dc-sum"><span class="dc-src">${esc(r.source || '')}</span><div class="dc-snip">${esc((r.content || '').replace(/\s+/g, ' ').slice(0, 140))}…</div></span></div>`).join('') || '<div class="dc-snip">nothing found</div>',
@@ -3828,6 +4031,18 @@
                     break;
                 case 'tool_done':
                     if (st.tools[d.name] != null) p[st.tools[d.name]] = `<span class="wire-tool">⚙ ${esc(d.name)}</span> <span class="vs-ok">✓</span> ${d.ms}ms`;
+                    break;
+                case 'approval_required':
+                    st.human = p.length;
+                    p.push('<span class="vs-flag">⏸ waiting for a human click…</span>');
+                    break;
+                case 'approval_resolved': {
+                    const ok = d.decision === 'approved';
+                    const part = `<span class="${ok ? 'vs-ok' : 'vs-block'}">human ${ok ? '✓ approved' : '✗ ' + esc(d.decision || '')}</span> ${((d.wait_ms || 0) / 1000).toFixed(1)}s`;
+                    if (st.human != null) p[st.human] = part; else p.push(part);
+                    break;
+                }
+                case 'parked':
                     break;
                 case 'judge_start':
                     p.push('<span class="vs-busy">judge…</span>');

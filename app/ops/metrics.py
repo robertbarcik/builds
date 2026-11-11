@@ -127,6 +127,7 @@ def guardrail_stats(hours: int = 24):
         "injection": 0, "input_blocked": 0, "pii_redacted": 0, "pii_output": 0,
         "hallucinated_sla": 0, "judge_flag": 0, "judge_block": 0, "judge_unavailable": 0,
         "authorized_disclosure": 0, "bypassed_realtime": 0, "voice_live_guarded": 0,
+        "human_approved": 0, "human_denied": 0,
     }
     total = 0
     try:
@@ -160,6 +161,9 @@ def guardrail_stats(hours: int = 24):
                         counts["judge_block"] += 1
                     elif "judge_unavailable" in trig:
                         counts["judge_unavailable"] += 1
+                    elif "note_human_approval" in trig:
+                        key = "human_approved" if ": approved" in trig else "human_denied"
+                        counts[key] += 1
                     elif "note_authorized_disclosure" in trig:
                         counts["authorized_disclosure"] += 1
                     elif "guardrails_bypassed" in trig:

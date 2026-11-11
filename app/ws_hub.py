@@ -28,6 +28,10 @@ class WSHub:
     def disconnect(self, ws) -> None:
         self._clients.discard(ws)
 
+    @property
+    def client_count(self) -> int:
+        return len(self._clients)
+
     async def broadcast(self, msg_type: str, data: dict) -> None:
         payload = json.dumps({
             "type": msg_type,

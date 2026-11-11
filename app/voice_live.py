@@ -169,6 +169,7 @@ class LiveBridge:
         self._conn = None
         self._task: Optional[asyncio.Task] = None
         self._pending: set = set()
+        self._awaiting_human: Optional[str] = None   # summary of the action waiting for a click
 
     # -- lifecycle ----------------------------------------------------
 
@@ -338,6 +339,25 @@ class LiveBridge:
         base = {"session_id": self.session_id, "delegation_id": delegation_id, "seq": seq}
         self._flush_turn()
         self._vlog("delegation_created", seq=seq, delegation_id=delegation_id, offset_ms=offset_ms, request=request)
+
+        # A confirmation window is open and the pipeline of the earlier
+        # delegation is parked on it. Whatever the caller just said ("yes, go
+        # ahead", "I confirm") must not start a second run — and must not
+        # count as the confirmation either: only the click does.
+        if self._awaiting_human:
+            self._vlog("delegation_parked", seq=seq, awaiting=self._awaiting_human)
+            await conn.send({
+                "type": "session.commentary.append",
+                "event_id": f"d{seq}-parked",
+                "delegation_id": delegation_id,
+                "content": (
+                    f"I'm still waiting for the click in the confirmation window for: {self._awaiting_human}. "
+                    "Saying yes isn't enough here — please click Approve or Deny on the screen."
+                ),
+            })
+            await hub.broadcast("voice_delegation", {**base, "stage": "parked", "awaiting": self._awaiting_human})
+            return
+
         await hub.broadcast("voice_delegation", {**base, "stage": "created", "request": request[:400], "offset_ms": offset_ms})
 
         await conn.send({
@@ -358,6 +378,39 @@ class LiveBridge:
             # parsed result as `data` — the UI renders it as a card while the
             # model is still talking.
             hub.broadcast_threadsafe("voice_delegation", {**base, "stage": stage, **detail})
+
+            def say(kind: str, tag: str, content: str):
+                self._vlog("append", seq=seq, type=kind, tag=tag, content=content)
+                asyncio.run_coroutine_threadsafe(conn.send({
+                    "type": f"session.{kind}.append",
+                    "event_id": f"d{seq}-{tag}",
+                    "delegation_id": delegation_id,
+                    "content": content,
+                }), loop)
+
+            # Human oversight: the pipeline is parked inside the tool call
+            # until somebody clicks. The voice must say so NOW (commentary =
+            # spoken), not when the delegation finishes.
+            if stage == "approval_required":
+                self._awaiting_human = detail.get("summary") or "the requested action"
+                say("commentary", f"approval-open-{detail.get('approval_id')}",
+                    f"I can do that: {self._awaiting_human}. Because it is a high-impact action, a "
+                    "confirmation window has just popped up on your screen. Please click Approve there "
+                    "— or Deny — and I'll wait for you.")
+                return
+            if stage == "approval_resolved":
+                self._awaiting_human = None
+                decision = detail.get("decision")
+                tag = f"approval-{decision}-{detail.get('approval_id')}"
+                if decision == "approved":
+                    say("commentary", tag, f"Thanks for the confirmation. Going ahead with it now: {detail.get('summary')}.")
+                elif decision == "denied":
+                    say("thinking", tag, f"The caller clicked DENY for: {detail.get('summary')}. Nothing was changed. "
+                                         "The final answer follows; do not say the action was done.")
+                else:
+                    say("thinking", tag, f"The confirmation window for {detail.get('summary')} got no click ({decision}). "
+                                         "Nothing was changed. The final answer follows; do not say the action was done.")
+                return
             if stage == "tool_done":
                 snippet = (detail.get("result") or "")[:220].replace("\n", " ")
                 asyncio.run_coroutine_threadsafe(conn.send({
@@ -373,6 +426,7 @@ class LiveBridge:
                 _run_chat_pipeline, request, f"voice-live-{self.ui_session_id}", "voice", progress
             )
         except Exception as e:
+            self._awaiting_human = None
             logger.exception("voice delegation pipeline failed")
             self._vlog("delegation_failed", seq=seq, error=str(e)[:300])
             await conn.send({

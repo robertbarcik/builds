@@ -14,6 +14,8 @@ from fastapi.staticfiles import StaticFiles
 from opentelemetry import trace
 from starlette.responses import StreamingResponse
 
+from app.approvals import approval_trigger, run_tool
+from app.approvals import router as approvals_router
 from app.audit_chat import router as audit_chat_router
 from app.config import DATABASE_PATH, MODE, ROLES, SERVER_HOST, SERVER_PORT
 from app.conversations import _conversations, get_or_create
@@ -31,6 +33,13 @@ from app.tools.audit_report import audit_report
 from app.tools.definitions import TOOLS
 from app.tools.incidents import create_incident, escalate_ticket, get_incident, list_incidents
 from app.tools.knowledge import search_kb
+from app.tools.servers import (
+    list_servers,
+    migrate_server,
+    provision_server,
+    reboot_server,
+    terminate_server,
+)
 from app.tools.sla import check_sla
 from app.reports.router import router as reports_router
 from app.tracing import tracer
@@ -51,6 +60,14 @@ TOOL_HANDLERS = {
     "get_incident": lambda args: get_incident(**args),
     "audit_report": lambda args: audit_report(**args),
     "search_kb": lambda args: search_kb(**args),
+    # Server fleet. Handlers are only reached through app.approvals.run_tool,
+    # which holds reboot / terminate / migrate (and medium/large provisioning)
+    # until a human clicks Approve.
+    "list_servers": lambda args: list_servers(**args),
+    "provision_server": lambda args: provision_server(**args),
+    "reboot_server": lambda args: reboot_server(**args),
+    "terminate_server": lambda args: terminate_server(**args),
+    "migrate_server": lambda args: migrate_server(**args),
 }
 
 async def _sim_state_changed(running: bool):
@@ -79,6 +96,7 @@ app.include_router(simulation_router)
 app.include_router(sentinel_router)
 app.include_router(reports_router)
 app.include_router(audit_chat_router)
+app.include_router(approvals_router)
 app.include_router(voice_router)
 app.include_router(voice_live_router)
 
@@ -118,7 +136,8 @@ VOICE_CHANNEL_HINT = (
     "\n\n[spoken channel: the answer will be read aloud by a voice agent. "
     "Use your tools exactly as usual BEFORE stating any fact (check_sla for "
     "any response/resolution time, search_kb for procedures, lookup_asset, "
-    "create_incident). Then reply in at most three short plain sentences, "
+    "create_incident, list_servers and the server actions). Then reply in at "
+    "most three short plain sentences, "
     "no markdown, no lists, no headings, in the same language as the request.]"
 )
 
@@ -216,7 +235,7 @@ def _run_chat_pipeline(
         model = get_model()
         all_tool_calls = []
         context_chunks = []
-        max_iterations = 5
+        max_iterations = 6   # get_incident → list_servers → action → answer needs four
         llm_call_count = 0
         total_prompt_tokens = 0
         total_completion_tokens = 0
@@ -290,7 +309,15 @@ def _run_chat_pipeline(
                         handler = TOOL_HANDLERS.get(fn_name)
                         if handler:
                             try:
-                                tool_result = handler(fn_args)
+                                # High-impact calls block here until a human
+                                # answers the confirmation window.
+                                tool_result, approval = run_tool(
+                                    fn_name, fn_args, handler,
+                                    session_id=session_id, channel=channel, report=_report,
+                                )
+                                if approval:
+                                    trace.setdefault("approvals", []).append(approval)
+                                    pre_result.guardrail_triggers.append(approval_trigger(approval))
                             except Exception as e:  # bad args from the model, DB hiccup
                                 tool_result = json.dumps({"error": f"{fn_name} failed: {e}"})
                                 tool_span.set_attribute("mu.tool.error", True)

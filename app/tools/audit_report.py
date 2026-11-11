@@ -37,6 +37,8 @@ def audit_report(hours: int = 24, limit: int = 5) -> str:
             "authorized_disclosure": "personal data legitimately returned by a tool",
             "bypassed_realtime": "voice turns on the old realtime channel (no guardrails)",
             "voice_live_guarded": "voice turns that went through the full pipeline",
+            "human_approved": "high-impact server actions a human approved in the confirmation window",
+            "human_denied": "high-impact server actions a human denied or left unanswered (not executed)",
         },
         "recent_flagged": flagged,
     }, ensure_ascii=False)

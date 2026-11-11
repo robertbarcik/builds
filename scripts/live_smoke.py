@@ -40,6 +40,8 @@ async def main():
     ap.add_argument("utterance", nargs="?", default="Hi, what is the guaranteed response time for a critical incident on the gold tier?")
     ap.add_argument("--seconds", type=int, default=45, help="listen this long after speaking")
     ap.add_argument("--pause", type=float, default=6.0, help="silence between caller turns (s)")
+    ap.add_argument("--approve", type=float, metavar="S", help="play the human: click Approve S seconds after a confirmation window opens")
+    ap.add_argument("--deny", type=float, metavar="S", help="play the human: click Deny S seconds after a confirmation window opens")
     args = ap.parse_args()
     if not OPENAI_API_KEY:
         sys.exit("OPENAI_API_KEY missing in .env")
@@ -51,10 +53,24 @@ async def main():
     # Capture what the bridge would push to the web UI.
     async def fake_broadcast(msg_type, data):
         if msg_type == "voice_delegation":
-            keys = {k: v for k, v in data.items() if k in ("stage", "request", "name", "ms", "judge_verdict", "guardrail_triggers", "blocked_by", "response")}
+            keys = {k: v for k, v in data.items() if k in ("stage", "request", "name", "ms", "judge_verdict", "guardrail_triggers", "blocked_by", "response", "summary", "decision", "wait_ms", "awaiting")}
             print(f"{stamp()}  [ui] {msg_type} {json.dumps(keys, ensure_ascii=False)[:400]}")
         else:
             print(f"{stamp()}  [ui] {msg_type} {json.dumps(data, ensure_ascii=False)[:200]}")
+        # No browser here, so this script plays the human in front of the
+        # confirmation window (without --approve/--deny the gate fails closed).
+        if msg_type == "approval_requested" and human_delay is not None:
+            async def click():
+                await asyncio.sleep(human_delay)
+                print(f"{stamp()}  [human] clicks {human_decision.upper()} on {data['action']} {data['target']}")
+                approvals.resolve(data["id"], human_decision)
+            asyncio.create_task(click())
+
+    from app import approvals
+    human_delay = args.approve if args.approve is not None else args.deny
+    human_decision = "approved" if args.approve is not None else "denied"
+    if human_delay is not None:
+        approvals.approver_present = lambda: True
     hub.broadcast = fake_broadcast
     hub.set_loop(asyncio.get_running_loop())
 

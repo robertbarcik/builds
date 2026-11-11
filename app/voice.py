@@ -156,8 +156,21 @@ async def voice_tool(request: Request):
     if not handler:
         return {"output": json.dumps({"error": f"Unknown tool: {name}"})}
 
-    result = await asyncio.to_thread(handler, args)
+    # The text guardrails are bypassed on this channel — the human gate is not:
+    # it sits in front of the handler, whoever calls it. The request simply
+    # stays open until somebody clicks in the confirmation window.
+    from app.approvals import approval_trigger, run_tool
 
+    try:
+        result, approval = await asyncio.to_thread(
+            run_tool, name, args, handler, session_id, "voice-realtime"
+        )
+    except Exception as e:
+        result, approval = json.dumps({"error": f"{name} failed: {e}"}), None
+
+    triggers = ["guardrails_bypassed: realtime channel"]
+    if approval:
+        triggers.append(approval_trigger(approval))
     await asyncio.to_thread(
         log_interaction,
         user_input=f"[voice tool call] {name}({json.dumps(args, ensure_ascii=False)})",
@@ -166,7 +179,7 @@ async def voice_tool(request: Request):
         model_response=str(result)[:500],
         tool_calls=[{"name": name, "arguments": args, "result": result}],
         judge_verdict={"verdict": "BYPASSED", "reason": "realtime voice channel"},
-        guardrail_triggers=["guardrails_bypassed: realtime channel"],
+        guardrail_triggers=triggers,
     )
 
     if name == "create_incident":

@@ -144,6 +144,106 @@ TOOLS = [
             },
         },
     },
+    # ── Server fleet ────────────────────────────────────────────────
+    # list_servers and small provisioning run directly. The rest is held by
+    # app/approvals.py until a human confirms on screen; the descriptions tell
+    # the model so it can announce that instead of asking "are you sure?".
+    {
+        "type": "function",
+        "function": {
+            "name": "list_servers",
+            "description": "List the servers in the fleet with role, size, site, status and monthly cost. Read-only, runs directly. Use it to answer what is running and to find a server's exact name before acting on it.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "enum": ["active", "all"],
+                        "description": "active (default) hides terminated servers; all includes them.",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "provision_server",
+            "description": "Order a new server. Size small runs directly (within the agent's own spending limit). Sizes medium and large are HELD for human approval: a confirmation window opens on the operator's screen and the call returns only after they click.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "role": {
+                        "type": "string",
+                        "enum": ["app", "db", "mail", "file", "gateway", "test"],
+                        "description": "What the server is for (default app).",
+                    },
+                    "size": {
+                        "type": "string",
+                        "enum": ["small", "medium", "large"],
+                        "description": "small = 2 vCPU / 4 GB, medium = 4 vCPU / 16 GB, large = 8 vCPU / 32 GB (default small).",
+                    },
+                    "site": {
+                        "type": "string",
+                        "enum": ["frankfurt", "vienna", "bratislava"],
+                        "description": "Data centre (default frankfurt).",
+                    },
+                },
+                "required": ["size"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "reboot_server",
+            "description": "Reboot a server. HELD for human approval: a confirmation window opens on the operator's screen and the call returns only after they click Approve or Deny. The result says whether it was executed.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "server_name": {"type": "string", "description": "Exact server name, e.g. srv-db-01."},
+                    "reason": {"type": "string", "description": "Why, including the ticket id if there is one."},
+                },
+                "required": ["server_name", "reason"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "terminate_server",
+            "description": "Terminate (kill, shut down for good, decommission) a server. Irreversible. HELD for human approval: a confirmation window opens on the operator's screen and the call returns only after they click Approve or Deny. The result says whether it was executed.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "server_name": {"type": "string", "description": "Exact server name, e.g. srv-app-02."},
+                    "reason": {"type": "string", "description": "Why, including the ticket id if there is one."},
+                },
+                "required": ["server_name", "reason"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "migrate_server",
+            "description": "Move (transfer, migrate) a server to another data centre. HELD for human approval: a confirmation window opens on the operator's screen and the call returns only after they click Approve or Deny. The result says whether it was executed.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "server_name": {"type": "string", "description": "Exact server name, e.g. srv-mail-01."},
+                    "target_site": {
+                        "type": "string",
+                        "enum": ["frankfurt", "vienna", "bratislava"],
+                        "description": "Where to move it.",
+                    },
+                    "reason": {"type": "string", "description": "Why, including the ticket id if there is one."},
+                },
+                "required": ["server_name", "target_site", "reason"],
+            },
+        },
+    },
     {
         "type": "function",
         "function": {
