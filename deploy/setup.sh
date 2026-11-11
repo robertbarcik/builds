@@ -20,6 +20,8 @@ APP_PASSWORD=$(envval APP_PASSWORD)
 ADMIN_PASSWORD=$(envval ADMIN_PASSWORD)
 [ -n "$APP_PASSWORD" ]   || { echo "APP_PASSWORD missing in .env"; exit 1; }
 [ -n "$ADMIN_PASSWORD" ] || { echo "ADMIN_PASSWORD missing in .env"; exit 1; }
+# the app's own login form (app/auth.py) is what protects the public URL
+grep -qE "^LOGIN_ENABLED=" .env || echo "LOGIN_ENABLED=1" >> .env
 
 echo "== swap (2 GB; pip + chromadb + ollama on 2 GB RAM need headroom)"
 if [ ! -f /swapfile ]; then
@@ -65,10 +67,7 @@ systemctl enable --now localdesk
 systemctl restart localdesk
 
 echo "== caddy ($HOST)"
-HASH_ROBERT=$(caddy hash-password --plaintext "$ADMIN_PASSWORD")
-HASH_STUDENT=$(caddy hash-password --plaintext "$APP_PASSWORD")
-sed -e "s|{HOST}|$HOST|" -e "s|{HASH_ROBERT}|$HASH_ROBERT|" -e "s|{HASH_STUDENT}|$HASH_STUDENT|" \
-    deploy/Caddyfile > /etc/caddy/Caddyfile
+sed -e "s|{HOST}|$HOST|" deploy/Caddyfile > /etc/caddy/Caddyfile
 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 systemctl enable --now caddy
 systemctl reload caddy || systemctl restart caddy

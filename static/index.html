@@ -1837,7 +1837,8 @@
 
         function spawnThread(x, y, opts) {
             opts = opts || {};
-            const id = 'thread-' + Date.now() + '-' + (++threadCount);
+            const id = 'thread-' + Date.now() + '-' + (++threadCount) + '-' + Math.random().toString(36).slice(2, 6);
+            rememberSession(opts.sessionId || id);
 
             /* Position relative to page (account for scroll) */
             let left = x + window.scrollX;
@@ -2869,8 +2870,35 @@
             if (ws && ws.readyState === WebSocket.OPEN) ws.send('ping');
         }, 25000);
 
+        /* Several browsers share one backend (the room logs into the same box) and
+           /ws broadcasts to all of them. Events that belong to ONE person's
+           conversation (voice call, approval window) are only acted on by the
+           browser that owns the session; the ops floor (telemetry, sentinel,
+           incidents, charts, sim state) stays shared. */
+        function mySessions() {
+            if (!window._muSessions) {
+                let saved = [];
+                try { saved = JSON.parse(sessionStorage.getItem('mu-sessions') || '[]'); } catch (e) { /* private mode */ }
+                window._muSessions = new Set(saved);
+            }
+            return window._muSessions;
+        }
+        function rememberSession(id) {
+            if (!id) return;
+            const s = mySessions();
+            s.add(id);
+            try { sessionStorage.setItem('mu-sessions', JSON.stringify([...s].slice(-200))); } catch (e) { /* ignore */ }
+        }
+        function isMySession(id) {
+            if (!id) return true;   /* no owner (MCP client, CLI): everyone may answer */
+            return mySessions().has(id) || mySessions().has(String(id).replace(/^voice-live-/, ''));
+        }
+
         function handleServerPush(msg) {
             const d = msg.data || {};
+            if ((msg.type === 'voice_delegation' || msg.type === 'voice_closed' || msg.type === 'voice_error'
+                 || msg.type === 'approval_requested') && !isMySession(d.session_id)) return;
+            if (msg.type === 'approval_resolved' && !approvalCards[d.id]) return;
             switch (msg.type) {
                 case 'telemetry_tick':   onTelemetry(d); break;
                 case 'incident_created': onIncidentCreated(d); break;
@@ -2975,7 +3003,7 @@
         }
 
         /* A reloaded page picks its open confirmation windows up again */
-        fetch('/api/approvals').then(r => r.json()).then(d => (d.pending || []).forEach(p => openApproval(p, false))).catch(() => {});
+        fetch('/api/approvals').then(r => r.json()).then(d => (d.pending || []).filter(p => isMySession(p.session_id)).forEach(p => openApproval(p, false))).catch(() => {});
 
         /* ── Ambient telemetry ── */
         const telemetryLayer = document.getElementById('telemetry-layer');
@@ -3424,7 +3452,8 @@
         async function startVoiceRealtime() {
             voiceOrb.classList.add('connecting');
             setVoiceHint('connecting…', true);
-            voiceSessionId = 'voice-' + Date.now();
+            voiceSessionId = 'voice-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+            rememberSession(voiceSessionId);
             try {
                 /* 1 — ephemeral client secret from our backend */
                 const sess = await fetch('/api/voice/session', { method: 'POST' }).then(r => {
@@ -3759,7 +3788,8 @@
         async function startVoiceLive() {
             voiceOrb.classList.add('connecting');
             setVoiceHint('connecting to ' + (voiceModelName || 'gpt-live-1') + '…', true);
-            voiceSessionId = 'voice-' + Date.now();
+            voiceSessionId = 'voice-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+            rememberSession(voiceSessionId);
             try {
                 voicePC = new RTCPeerConnection();
                 voiceMicStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -3786,6 +3816,7 @@
                 }
                 const d = await res.json();
                 liveSessionId = d.session_id;
+                rememberSession(liveSessionId);
                 await voicePC.setRemoteDescription({ type: 'answer', sdp: d.sdp });
 
                 voiceLive = true;

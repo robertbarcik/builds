@@ -18,3 +18,4 @@ data/db/*.db-shm
 data/db/*.db-wal
 .DS_Store
 *.gguf
+.env.bak*

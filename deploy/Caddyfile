@@ -1,11 +1,8 @@
-# Template, filled in by deploy/setup.sh: {HOST} -> public hostname,
-# {HASH_ROBERT} / {HASH_STUDENT} -> bcrypt of ADMIN_PASSWORD / APP_PASSWORD from .env.
-# Caddy fetches and renews the TLS certificate itself (Let's Encrypt) as long as ports 80/443 are open.
+# Template, filled in by deploy/setup.sh: {HOST} -> public hostname.
+# Caddy only terminates TLS (Let's Encrypt, needs ports 80/443 open). The login is the app's
+# own cookie form (app/auth.py, LOGIN_ENABLED=1 in the server's .env), not basic auth:
+# Safari drops basic-auth credentials on the /ws WebSocket handshake.
 {HOST} {
-	basicauth {
-		robert {HASH_ROBERT}
-		student {HASH_STUDENT}
-	}
 	# /api/chat-stream is SSE and /ws is a WebSocket: flush every chunk immediately
 	reverse_proxy 127.0.0.1:7860 {
 		flush_interval -1

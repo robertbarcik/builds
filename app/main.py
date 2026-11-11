@@ -17,6 +17,7 @@ from starlette.responses import StreamingResponse
 from app.approvals import approval_trigger, run_tool
 from app.approvals import router as approvals_router
 from app.audit_chat import router as audit_chat_router
+from app.auth import LoginMiddleware
 from app.config import DATABASE_PATH, MODE, ROLES, SERVER_HOST, SERVER_PORT
 from app.conversations import _conversations, get_or_create
 from app.db import ensure_schema
@@ -91,6 +92,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="LocalDesk", lifespan=lifespan)
+app.add_middleware(LoginMiddleware)  # no-op unless LOGIN_ENABLED=1 (deployed box)
 app.include_router(metrics_router)
 app.include_router(simulation_router)
 app.include_router(sentinel_router)
