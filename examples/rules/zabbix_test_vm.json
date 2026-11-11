@@ -1,0 +1,10 @@
+{
+  "title": "Zabbix test VM agent",
+  "rule": {
+    "kind": "suppress",
+    "match": {"source": "zabbix", "host_glob": "*-test-vm-*", "title_contains": "agent is not available",
+              "severity_in": ["minor", "warning", "info"]},
+    "window_min": 1440,
+    "max_per_window": 0
+  }
+}

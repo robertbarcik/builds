@@ -22,8 +22,22 @@ function desk() {
     markers: [],
     tail: [],
     rules: [],                       // all rules (on and off) with live counts
-    // headline wording in one place: the triage milestone swaps the right side for incidents
-    copy: { inLabel: 'alerts came in', outLabel: 'got past the rules' },
+    // all visible wording of the headline and the triage board in one place
+    copy: {
+      inLabel: 'alerts came in', outLabel: 'need a human', outLabelOne: 'needs a human',
+      passedLabel: 'got past the rules', filteredLabel: 'filtered by rules',
+      cost: (usd) => usd === null ? 'AI cost under $0.001 per minute' : `AI cost ≈ $${usd} per minute`,
+      degraded: 'AI paused, rule-based grouping',
+      emptyBoard: 'Nothing needs a human right now.',
+      cause: 'Likely cause', evidence: (n, t) => `Evidence: ${n} alert${n === 1 ? '' : 's'} from ${t} tool${t === 1 ? '' : 's'}`,
+      more: (n) => `and ${n} more`, gotIt: 'Got it', writing: 'Writing a summary…',
+      quiet: 'Quiet: no new alerts for 10 min', recovering: 'Recovering: most alerts have cleared',
+      ruleBased: 'Rule-based',
+    },
+    incidents: [],
+    freshIds: {},
+    triage: { degraded: false },
+    budget: { usd_last_min: 0 },
     scenarios: [],
     inject: { active: null, remaining_s: 0, cooldown_s: 0 },
     notice: '',
@@ -104,7 +118,24 @@ function desk() {
         if (m.rules) this.rules = m.rules;
         this.applyTick(m);
         this.tail = m.tail || [];
-        if (m.type === 'reset') this.notice = '';
+        if (m.incidents) this.incidents = m.incidents;
+        if (m.triage) this.triage = m.triage;
+        if (m.budget) this.budget = m.budget;
+        if (m.type === 'reset') { this.notice = ''; this.incidents = []; }
+      } else if (m.type === 'incident_upsert') {
+        this.upsertIncident(m.incident);
+      } else if (m.type === 'incident_delta') {
+        const i = this.incidents.find(x => x.id === m.id);
+        if (i) {
+          if (m.start) { i.summary = ''; i.summary_state = 'streaming'; }
+          i.summary += m.delta || '';
+        }
+      } else if (m.type === 'incident_remove') {
+        this.incidents = this.incidents.filter(x => x.id !== m.id);
+      } else if (m.type === 'triage_state') {
+        this.triage = m;
+      } else if (m.type === 'budget') {
+        this.budget = m;
       } else if (m.type === 'tick') {
         this.applyTick(m);
       } else if (m.type === 'events') {
@@ -129,6 +160,48 @@ function desk() {
         this.inject = m.inject;
         if (wasActive && !m.inject.active) this.notice = '';
       }
+    },
+
+    // ---- incident board
+    upsertIncident(inc) {
+      const k = this.incidents.findIndex(x => x.id === inc.id);
+      if (k < 0) {
+        this.freshIds[inc.id] = true;
+        setTimeout(() => { delete this.freshIds[inc.id]; }, 4000);
+        this.incidents = [...this.incidents, inc];
+        return;
+      }
+      const cur = this.incidents[k];
+      // a summary that is still streaming in keeps its text until the final upsert
+      if (cur.summary_state === 'streaming' && inc.summary_state === 'streaming') inc.summary = cur.summary;
+      this.incidents.splice(k, 1, inc);
+    },
+    get board() {
+      const rank = { critical: 4, major: 3, minor: 2, warning: 1, info: 0 };
+      return this.incidents.slice().sort((a, b) =>
+        (a.status === 'open' ? 0 : 1) - (b.status === 'open' ? 0 : 1)
+        || rank[b.severity] - rank[a.severity]
+        || (b.opened_ts || '').localeCompare(a.opened_ts || ''));
+    },
+    get openCount() { return this.incidents.filter(i => i.status === 'open').length; },
+    edge(i) {
+      if (i.status === 'quiet') return i.recovering ? 'ok' : 'idle';
+      return (i.severity === 'critical' || i.severity === 'major') ? 'bad' : 'warn';
+    },
+    async dismiss(i) {
+      this.incidents = this.incidents.filter(x => x.id !== i.id);
+      try {
+        await fetch(`/api/incidents/${encodeURIComponent(i.id)}/dismiss`, { method: 'POST' });
+      } catch (e) { /* the next hello restores the true board */ }
+    },
+    get costText() {
+      const v = Number(this.budget && this.budget.usd_last_min || 0);
+      const s = v === 0 ? '0.000' : v < 0.001 ? null : v < 0.1 ? v.toFixed(3) : v.toFixed(2);
+      return this.copy.cost(s);
+    },
+    get costTitle() {
+      const t = (this.budget && this.budget.totals) || {};
+      return `${t.calls || 0} AI calls so far, $${Number(t.cost_usd || 0).toFixed(4)} in total`;
     },
 
     // ---- noise strip
@@ -215,11 +288,20 @@ function desk() {
       <div class="headline" aria-live="off">
         <div class="hl-in"><b x-text="fmt(total)">0</b><span x-text="copy.inLabel">alerts came in</span></div>
         <div class="hl-arrow" aria-hidden="true">&rarr;</div>
-        <div class="hl-out"><b x-text="fmt(passed)">0</b><span x-text="copy.outLabel">got past the rules</span></div>
+        <div class="hl-out"><b x-text="fmt(openCount)">0</b><span x-text="openCount === 1 ? copy.outLabelOne : copy.outLabel">need a human</span></div>
+      </div>
+      <div class="hl-sub" x-show="total" x-cloak>
+        <span x-text="`${fmt(passed)} ${copy.passedLabel}`"></span>
+        <span aria-hidden="true">&middot;</span>
+        <span x-text="`${fmt(filtered)} ${copy.filteredLabel}`"></span>
       </div>
       <div class="clock" x-show="simTs" x-cloak>
         Simulated time <span x-text="clock(simTs)"></span>, one minute per second
         <span x-show="!connected"> (reconnecting)</span>
+      </div>
+      <div class="ai-line" x-show="simTs" x-cloak>
+        <span class="cost" :title="costTitle" x-text="costText"></span>
+        <span class="chip paused" x-show="triage.degraded" x-text="copy.degraded" role="status"></span>
       </div>
     </div>
     <button class="btn btn-big" @click="openBreak()">Break something</button>
@@ -249,10 +331,46 @@ function desk() {
     <div class="strip-axis"><span>30 min ago</span><span>now</span></div>
   </section>
 
-  <!-- INCIDENTS: the AI triage milestone renders incident cards inside #incidents -->
+  <!-- INCIDENTS: AI triage folds the stream into a few cards -->
   <section class="incidents" id="incidents" aria-labelledby="inc-title">
     <h2 class="section-title" id="inc-title">Needs a human</h2>
-    <div class="empty-state">Nothing needs a human right now.</div>
+    <div class="empty-state" x-show="board.length === 0" x-text="copy.emptyBoard">Nothing needs a human right now.</div>
+    <div class="inc-grid">
+      <template x-for="i in board" :key="i.id">
+        <article class="inc" :class="[`edge-${edge(i)}`, { quiet: i.status === 'quiet', fresh: freshIds[i.id] }]"
+                 :aria-label="`${i.customer_name}: ${i.title}`">
+          <div class="inc-top">
+            <span class="inc-cust" x-text="i.customer_short"></span>
+            <span class="inc-tag" x-show="i.origin === 'degraded'" x-text="copy.ruleBased"></span>
+            <span class="inc-tag" x-show="i.status === 'quiet'" x-text="i.recovering ? copy.recovering : copy.quiet"></span>
+            <span class="inc-since" x-text="`since ${clock(i.opened_ts)}`"></span>
+          </div>
+          <h3 class="inc-title" x-text="i.title"></h3>
+          <p class="inc-sum" :class="{ typing: i.summary_state === 'streaming', waiting: !i.summary }"
+             x-text="i.summary || copy.writing" aria-live="polite"></p>
+          <p class="inc-cause" x-show="i.likely_cause"><span x-text="copy.cause"></span> <span x-text="i.likely_cause"></span></p>
+          <details class="inc-ev">
+            <summary x-text="copy.evidence(i.evidence_count, i.tool_count)"></summary>
+            <ul class="ev-lines">
+              <template x-for="e in i.evidence" :key="e.id">
+                <li>
+                  <span class="sev" :class="e.severity"></span>
+                  <span class="v" x-text="e.by_rule ? 'By rule' : e.vendor"></span>
+                  <span class="t" x-text="clock(e.ts, true)"></span>
+                  <span class="h" x-text="e.host"></span>
+                  <span class="msg" x-text="e.title"></span>
+                </li>
+              </template>
+            </ul>
+            <p class="ev-more" x-show="i.more" x-text="copy.more(i.more)"></p>
+          </details>
+          <div class="inc-foot">
+            <p class="inc-next" x-text="i.next_step"></p>
+            <button class="btn btn-2 got" @click="dismiss(i)" x-text="copy.gotIt">Got it</button>
+          </div>
+        </article>
+      </template>
+    </div>
   </section>
 
   <section class="tail" aria-labelledby="tail-title">

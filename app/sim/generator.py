@@ -199,10 +199,23 @@ def _stream_hosts(customer: Customer, s: Stream) -> list[str]:
 
 # ---------------------------------------------------------------- baseline noise
 
+def _rate_factor(name: str, profile: str, ts: float, rate_mult: float,
+                 mix: Optional[dict[str, float]]) -> float:
+    """Shaping x multiplier. A pattern listed in `mix` (live stream only) runs flat over the day
+    at its own multiplier, so the recurring noise rules can remove is a steady share at any hour."""
+    if mix and name in mix:
+        return float(mix[name])
+    return shape(profile, ts) * rate_mult
+
+
 def noise_events(customer: Customer, start: float, end: float, bucket_s: int, seed: Any,
-                 rate_mult: float = 1.0) -> list[dict]:
+                 rate_mult: float = 1.0, mix: Optional[dict[str, float]] = None) -> list[dict]:
     """Baseline noise for one customer in [start, end), bucketed so that the draw for a given
-    bucket is the same whether it is generated for the history or the live stream."""
+    bucket is the same whether it is generated for the history or the live stream.
+
+    `mix` (live only): {pattern: multiplier} for the recurring-noise families. They keep their
+    titles, hosts, values and timing, only their rate changes, so a rule that backtests well on
+    the history removes the same alerts live, just a bigger share of them."""
     out: list[dict] = []
     srcs = set(customer.sources)
     t0 = int(start // bucket_s * bucket_s)
@@ -211,7 +224,7 @@ def noise_events(customer: Customer, start: float, end: float, bucket_s: int, se
             continue
         hosts = _stream_hosts(customer, s)
         for b in range(t0, int(end), bucket_s):
-            lam = s.rate * len(hosts) * shape(s.profile, b + bucket_s / 2) * bucket_s / 3600 * rate_mult
+            lam = s.rate * len(hosts) * _rate_factor(s.name, s.profile, b + bucket_s / 2, rate_mult, mix) * bucket_s / 3600
             if lam <= 0:
                 continue
             rng = _rng(seed, customer.id, s.name, s.check, s.host_role, b, bucket_s)
@@ -229,7 +242,7 @@ def noise_events(customer: Customer, start: float, end: float, bucket_s: int, se
         if len(members) < 2:
             continue
         for b in range(t0, int(end), bucket_s):
-            lam = g.rate * shape(g.profile, b + bucket_s / 2) * bucket_s / 3600 * rate_mult
+            lam = g.rate * _rate_factor(g.name, g.profile, b + bucket_s / 2, rate_mult, mix) * bucket_s / 3600
             if lam <= 0:
                 continue
             rng = _rng(seed, customer.id, g.name, b, bucket_s)

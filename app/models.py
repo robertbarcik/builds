@@ -78,7 +78,7 @@ class Incident(BaseModel):
     customer: Optional[str] = None
     opened_ts: Optional[str] = None
     updated_ts: Optional[str] = None
-    status: Literal["open", "acknowledged"] = "open"
+    status: Literal["open", "quiet", "acknowledged"] = "open"   # quiet: no new evidence for a while
 
 
 # ---------------------------------------------------------------- rule DSL

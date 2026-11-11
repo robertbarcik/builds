@@ -12,13 +12,13 @@ models:
   # fast, cheap, non-reasoning, reliable json_object output
   triage:
     id: openai/gpt-4.1-mini
-    max_tokens: 900
-    timeout_s: 20
+    max_tokens: 1200
+    timeout_s: 30
     temperature: 0.2
   # short streamed incident summaries (same model: low latency to first token)
   render:
     id: openai/gpt-4.1-mini
-    max_tokens: 350
+    max_tokens: 220
     timeout_s: 20
     temperature: 0.3
   # strong tool-calling model for the batch rule-engineer loop
@@ -43,13 +43,44 @@ caps:
   triage_interval_s: 8
   triage_max_lines: 60
 
+# Live triage board (app/triage/loop.py). Minutes are SIMULATED (60 per real minute).
+triage:
+  quiet_after_min: 10        # no new evidence for this long and half its alerts resolved -> "quiet"
+  quiet_unresolved_after_min: 30   # no new evidence for this long -> "quiet" even if still firing
+  expire_after_min: 45       # quiet this long -> card leaves the board (~45 real s)
+  ack_keep_min: 120          # a dismissed card still collects its alerts this long (no card)
+  max_cards: 6               # board cap; beyond it only major/critical incidents may open
+  max_new_per_tick: 3
+  max_summaries_per_tick: 2
+  failures_to_degrade: 2     # consecutive failed triage calls before rule-based grouping
+  probe_every_s: 30          # real seconds between attempts to resume AI triage
+  carry_max: 120             # unsent lines kept for the next tick (oldest dropped)
+  line_max_age_min: 15       # unsent lines older than this are dropped
+
 sim:
   seed: 20261111
   speed: 60                       # simulated seconds per real second
   history_days: 30
   history_end: "2026-11-10T00:00:00Z"
   live_start: "2026-11-10T09:30:00Z"
-  live_rate_multiplier: 4.5      # live baseline is denser than history (4-8 events per real s)
+  live_rate_multiplier: 2.5      # live baseline is denser than history (4-8 events per real s)
+  # Live-only: the recurring noise rules can remove runs flat over the day at these multipliers
+  # (instead of live_rate_multiplier x the diurnal shape), so it is a large, steady share of the
+  # live stream at any simulated hour and an accepted rule visibly cuts the strip. Same titles,
+  # hosts and values as the history; only the rate differs. Measured on LiveSim + the rule engine
+  # (5 sim hours): ~80 % of live alerts are these families; NTP rule alone -33 %, +Zabbix CPU
+  # retune -47 %, +test VM -58 %, +stale SCOM host -68 % of the "reach a human" bars.
+  live_mix:
+    noise:checkmk_ntp: 14.0
+    noise:zabbix_test_vm: 6.4
+    noise:scom_stale_host: 5.8
+    noise:prtg_traffic: 7.6
+    tight:zabbix_cpu: 5.6
+    tight:azure_cpu: 5.2
+    tight:k8s_throttling: 5.6
+    tight:checkmk_fs: 4.5
+    group:branch_vpn_blip: 6.0
+    group:win_agent_restart: 3.0
   auto_scenario_every_min: 180    # simulated minutes between background scenarios (~3 real min)
   scenario_span_min: 75           # live scenarios are compressed to this many simulated minutes
   inject_cooldown_s: 30           # real seconds after an injected scenario finishes

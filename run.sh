@@ -27,9 +27,19 @@ existing=$(lsof -ti "tcp:$PORT" -sTCP:LISTEN 2>/dev/null || true)
 if [ -n "$existing" ]; then
     echo "Stopping existing instance on port $PORT (pid $existing)..."
     kill $existing 2>/dev/null || true
-    for _ in $(seq 1 25); do
-        if [ -z "$(lsof -ti "tcp:$PORT" -sTCP:LISTEN 2>/dev/null || true)" ]; then break; fi
+    # Wait for the PROCESS to exit, not just the port: uvicorn closes the listener first and
+    # would otherwise keep serving an open browser stream (and spending on AI calls).
+    for _ in $(seq 1 40); do
+        alive=0
+        for p in $existing; do if kill -0 "$p" 2>/dev/null; then alive=1; fi; done
+        if [ "$alive" = 0 ]; then break; fi
         sleep 0.2
+    done
+    for p in $existing; do
+        if kill -0 "$p" 2>/dev/null; then
+            echo "Old instance (pid $p) did not exit; killing it."
+            kill -9 "$p" 2>/dev/null || true
+        fi
     done
     if [ -n "$(lsof -ti "tcp:$PORT" -sTCP:LISTEN 2>/dev/null || true)" ]; then
         echo "Port $PORT still busy; refusing to start a second instance." >&2
@@ -41,7 +51,7 @@ BOOT_ID=$($PY -c "import uuid; print(uuid.uuid4().hex[:12])")
 mkdir -p logs
 echo "Starting Signal Desk on http://$HOST:$PORT (boot $BOOT_ID)"
 SIGNAL_DESK_BOOT_ID="$BOOT_ID" nohup $PY -m uvicorn app.main:app --host "$HOST" --port "$PORT" \
-    --log-level warning >logs/server.log 2>&1 &
+    --log-level warning --timeout-graceful-shutdown 2 >logs/server.log 2>&1 &
 PID=$!
 
 # A health answer only counts if it carries the boot id of THIS start (not a stale process).

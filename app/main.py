@@ -17,11 +17,14 @@ from typing import Optional, Union
 from app.config import STATIC_DIR, key_present, load_config, model_ids
 from app.engine.runtime import RuleRuntime
 from app.engine.store import get_store
+from app.llm.budget import Budget
+from app.llm.client import LLMClient
 from app.models import ActiveRule, Rule
 from app.sim.catalog import CUSTOMERS
 from app.sim.live import InjectRefused, LiveSim
 from app.sim.scenarios import SCENARIOS
 from app.sse import Hub, format_sse
+from app.triage.loop import TriageLoop
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("signal_desk")
@@ -34,6 +37,10 @@ CFG = load_config()
 hub = Hub()
 sim = LiveSim(CFG["sim"], hub)
 rules = RuleRuntime(get_store(), sim, hub)       # filters the live stream via sim.rules_hook
+budget = Budget(CFG)                             # every LLM call is metered and capped here
+budget.listeners.append(lambda snap: hub.publish("budget", snap))
+llm = LLMClient(budget, CFG)                      # shared by triage and the rule engineer
+triage = TriageLoop(sim, hub, llm, budget, CFG)   # consumes sim.listeners (rule survivors)
 
 
 def activate_rule(rule: Union[Rule, dict], title: str, proposal_id: Optional[str] = None) -> ActiveRule:
@@ -45,15 +52,17 @@ def activate_rule(rule: Union[Rule, dict], title: str, proposal_id: Optional[str
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     task = asyncio.create_task(sim.run(), name="live-sim")
+    ttask = asyncio.create_task(triage.run(), name="triage")
     log.info("Signal Desk up, boot_id=%s, key_present=%s", BOOT_ID, key_present())
     try:
         yield
     finally:
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
+        for t in (ttask, task):
+            t.cancel()
+            try:
+                await t
+            except asyncio.CancelledError:
+                pass
 
 
 app = FastAPI(title="Signal Desk", lifespan=lifespan)
@@ -108,6 +117,7 @@ async def inject(request: Request) -> JSONResponse:
 async def reset() -> JSONResponse:
     rules.reset()                 # seed rules only, fresh engine, live counts zeroed
     sim.reset()
+    triage.reset()                # empty board, AI triage back on
     return JSONResponse({"ok": True, "epoch": sim.epoch})
 
 
@@ -148,12 +158,30 @@ async def add_rule(request: Request) -> JSONResponse:
     return JSONResponse({"ok": True, "rule": rules.rule_payload(r)})
 
 
+@app.get("/api/incidents")
+async def incidents() -> JSONResponse:
+    return JSONResponse(triage.snapshot())
+
+
+@app.post("/api/incidents/{inc_id}/dismiss")
+async def dismiss_incident(inc_id: str) -> JSONResponse:
+    """"Got it": the card leaves the board for good (server-side)."""
+    if not triage.dismiss(inc_id):
+        return JSONResponse({"error": "unknown_incident", "id": inc_id}, status_code=404)
+    return JSONResponse({"ok": True, "id": inc_id, "open": triage.open_count()})
+
+
+@app.get("/api/budget")
+async def budget_view() -> JSONResponse:
+    return JSONResponse(budget.snapshot())
+
+
 @app.get("/api/stream")
 async def stream(request: Request) -> StreamingResponse:
     async def gen():
         q = hub.subscribe()
         try:
-            yield format_sse("hello", {"boot_id": BOOT_ID, **sim.snapshot()})
+            yield format_sse("hello", {"boot_id": BOOT_ID, **sim.snapshot(), **triage.snapshot()})
             while True:
                 if await request.is_disconnected():
                     break

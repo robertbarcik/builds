@@ -50,6 +50,7 @@ class LiveSim:
         self.seed = sim_cfg["seed"]
         self.start_ts = parse_iso(sim_cfg["live_start"])
         self.rate_mult = float(sim_cfg.get("live_rate_multiplier", 6.0))
+        self.mix = {str(k): float(v) for k, v in (sim_cfg.get("live_mix") or {}).items()}
         self.auto_every = float(sim_cfg.get("auto_scenario_every_min", 180)) * 60
         self.span_min = float(sim_cfg.get("scenario_span_min", 75))
         self.cooldown_s = float(sim_cfg.get("inject_cooldown_s", 30))
@@ -173,7 +174,7 @@ class LiveSim:
             m = self._next_minute
             batch: list[dict] = []
             for cust in CUSTOMERS.values():
-                batch.extend(noise_events(cust, m, m + 60, 60, (self.seed, "live"), self.rate_mult))
+                batch.extend(noise_events(cust, m, m + 60, 60, (self.seed, "live"), self.rate_mult, self.mix))
             self._push(batch)
             self._next_minute += 60
         if now >= self._next_auto:

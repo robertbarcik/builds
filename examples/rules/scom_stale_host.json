@@ -1,0 +1,10 @@
+{
+  "title": "SCOM decommissioned host",
+  "rule": {
+    "kind": "suppress",
+    "match": {"source": "scom", "host_glob": "*-win-old-07", "title_contains": "Health Service unavailable",
+              "severity_in": ["warning", "info"]},
+    "window_min": 1440,
+    "max_per_window": 0
+  }
+}
