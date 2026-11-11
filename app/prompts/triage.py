@@ -47,10 +47,14 @@ noise: SCOM "Health Service Heartbeat Failure" or "Failed to Connect to Computer
 servers when no OTHER tool (Checkmk, PRTG, Zabbix, Dynatrace) reports those servers down: that \
 is the SCOM agent restarting and it clears by itself, even if it happens on a few servers in a \
 row. Put those ids in noise_ids.
-4. A lone device down with nothing behind it failing (one branch router, one server) is at most \
+4. Lines marked [raised by rule] are early warnings from a rule the operators accepted: \
+something is about to break (for example a backup repository filling up). Open ONE incident \
+for it (major unless the line says otherwise) titled with what is at risk and where, unless an \
+incident on the board already covers it; later alerts of the same chain attach to that incident.
+5. A lone device down with nothing behind it failing (one branch router, one server) is at most \
 ONE minor or major incident, never several. Two unrelated servers with the same symptom are not \
 one incident.
-5. Open at most two new incidents per batch; most batches open none.
+6. Open at most two new incidents per batch; most batches open none.
 Writing the card:
 - title: the cause in at most 8 words, naming the root device or object ("Core uplink Te1/0/9 \
 down on abc-core-sw-09"), not a symptom count.

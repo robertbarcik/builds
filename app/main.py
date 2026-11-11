@@ -17,6 +17,7 @@ from typing import Optional, Union
 from app.config import STATIC_DIR, key_present, load_config, model_ids
 from app.engine.runtime import RuleRuntime
 from app.engine.store import get_store
+from app.engineer.agent import EngineerRefused, EngineerService
 from app.llm.budget import Budget
 from app.llm.client import LLMClient
 from app.models import ActiveRule, Rule
@@ -49,6 +50,11 @@ def activate_rule(rule: Union[Rule, dict], title: str, proposal_id: Optional[str
     return rules.activate(rule, title, proposal_id=proposal_id)
 
 
+# the rule engineer: proposes, the deterministic engine checks, accepting puts a rule live
+engineer = EngineerService(llm, hub, CFG, active_fn=lambda: rules.store.enabled(),
+                           activate_fn=activate_rule, budget=budget)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     task = asyncio.create_task(sim.run(), name="live-sim")
@@ -57,6 +63,7 @@ async def lifespan(_app: FastAPI):
     try:
         yield
     finally:
+        engineer.reset()
         for t in (ttask, task):
             t.cancel()
             try:
@@ -118,7 +125,62 @@ async def reset() -> JSONResponse:
     rules.reset()                 # seed rules only, fresh engine, live counts zeroed
     sim.reset()
     triage.reset()                # empty board, AI triage back on
+    engineer.reset()              # no proposals, no run (the cooldown stays: it guards spend)
     return JSONResponse({"ok": True, "epoch": sim.epoch})
+
+
+# ------------------------------------------------------------ rule engineer and proposals
+
+def _refused(e: EngineerRefused) -> JSONResponse:
+    status = {"busy": 409, "cooldown": 429, "budget": 429, "no_saved_run": 404}.get(e.reason, 409)
+    return JSONResponse({"ok": False, "error": e.reason, "retry_in_s": round(e.retry_in_s, 1),
+                         "engineer": engineer.state_payload()}, status_code=status)
+
+
+@app.post("/api/engineer/run")
+async def engineer_run() -> JSONResponse:
+    try:
+        run_id = engineer.start_run()
+    except EngineerRefused as e:
+        return _refused(e)
+    return JSONResponse({"ok": True, "run_id": run_id}, status_code=202)
+
+
+@app.post("/api/engineer/load-saved")
+async def engineer_load_saved() -> JSONResponse:
+    try:
+        run_id = engineer.load_saved()
+    except EngineerRefused as e:
+        return _refused(e)
+    return JSONResponse({"ok": True, "run_id": run_id}, status_code=202)
+
+
+@app.get("/api/proposals")
+async def proposals() -> JSONResponse:
+    return JSONResponse(engineer.snapshot())
+
+
+@app.post("/api/proposals/{pid}/accept")
+async def accept_proposal(pid: str) -> JSONResponse:
+    try:
+        p, ar = engineer.accept(pid)
+    except KeyError:
+        return JSONResponse({"error": "unknown_proposal", "id": pid}, status_code=404)
+    except ValueError as e:
+        return JSONResponse({"error": "not_pending", "detail": str(e)}, status_code=409)
+    asyncio.create_task(engineer.refresh_pending())     # numbers of the others against the new rule set
+    return JSONResponse({"ok": True, "proposal": engineer.proposal_payload(p), "rule": rules.rule_payload(ar)})
+
+
+@app.post("/api/proposals/{pid}/reject")
+async def reject_proposal(pid: str) -> JSONResponse:
+    try:
+        p = engineer.reject(pid)
+    except KeyError:
+        return JSONResponse({"error": "unknown_proposal", "id": pid}, status_code=404)
+    except ValueError as e:
+        return JSONResponse({"error": "not_pending", "detail": str(e)}, status_code=409)
+    return JSONResponse({"ok": True, "proposal": engineer.proposal_payload(p)})
 
 
 @app.get("/api/rules")
@@ -181,7 +243,8 @@ async def stream(request: Request) -> StreamingResponse:
     async def gen():
         q = hub.subscribe()
         try:
-            yield format_sse("hello", {"boot_id": BOOT_ID, **sim.snapshot(), **triage.snapshot()})
+            yield format_sse("hello", {"boot_id": BOOT_ID, **sim.snapshot(), **triage.snapshot(),
+                                       **engineer.snapshot()})
             while True:
                 if await request.is_disconnected():
                     break

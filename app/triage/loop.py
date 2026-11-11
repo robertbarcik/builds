@@ -55,6 +55,15 @@ INCIDENT_SEVERITIES = ("critical", "major", "minor")
 EVIDENCE_PREVIEW = 5
 EVIDENCE_KEEP = 400                    # evidence events kept per card (the count keeps going)
 RESUMMARY_MIN_REAL_S = 30.0
+SUMMARY_MAX_TOKENS = 220
+
+
+def triage_worthy(e: Event) -> bool:
+    """A firing alert the triage model should see: minor and above, plus every early warning an
+    accepted precursor rule raised (whatever severity the rule gave it)."""
+    if e.status != "firing":
+        return False
+    return e.severity in TRIAGE_SEVERITIES or (bool(e.produced_by) and e.check == "early_warning")
 
 # deterministic keyword families for degraded mode: (key, label, team, keywords). First match
 # wins; matching is case-insensitive on the title.
@@ -332,7 +341,7 @@ class TriageLoop:
         fresh = list(self._inbox)
         self._inbox.clear()
         self._note_resolves(fresh)
-        cand = self._carry + [e for e in fresh if e.status == "firing" and e.severity in TRIAGE_SEVERITIES]
+        cand = self._carry + [e for e in fresh if triage_worthy(e)]
         cand = [e for e in cand if now - parse_iso(e.ts) <= self.line_max_age]
         seen: set[str] = set()
         uniq = []
@@ -578,7 +587,7 @@ class TriageLoop:
         self.hub.publish("incident_delta", {"id": c.id, "start": True, "delta": ""})
         text = ""
         try:
-            stream = self.llm.stream_text("render", msgs)
+            stream = self.llm.stream_text("render", msgs, max_tokens=SUMMARY_MAX_TOKENS)
             async for piece in stream:
                 text += piece
                 self.hub.publish("incident_delta", {"id": c.id, "delta": piece})

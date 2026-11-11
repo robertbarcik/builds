@@ -33,7 +33,55 @@ function desk() {
       more: (n) => `and ${n} more`, gotIt: 'Got it', writing: 'Writing a summary…',
       quiet: 'Quiet: no new alerts for 10 min', recovering: 'Recovering: most alerts have cleared',
       ruleBased: 'Rule-based',
+      // the rule engineer (Proposals tab)
+      eng: {
+        introTitle: 'Let AI study 30 days of history',
+        introText: 'The AI reads a month of alerts from every source and proposes a few plain rules. The rule engine tests each one against the history before you decide.',
+        runBtn: 'Ask AI to study 30 days of history',
+        loadSavedLink: 'load last run',
+        loadSavedBtn: (d) => d ? `Load the last run (saved ${d})` : 'Load the last run',
+        runAgain: 'Run the AI again',
+        tryAgain: 'Try the live AI again',
+        cooldown: (s) => `The AI can run again in ${Math.ceil(s)} s.`,
+        runningTitle: 'The AI is studying 30 days of alerts',
+        replayingTitle: (d) => `Replaying the saved run from ${d || 'an earlier day'}`,
+        elapsed: (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')} · usually under a minute`,
+        savedChip: (d) => `Saved run from ${d || 'an earlier day'}`,
+        howItWorked: (n) => `How the AI worked (${n} steps)`,
+        kind: { suppress: 'Noise', precursor: 'Early warning', retune: 'Threshold', correlate: 'Correlate' },
+        accepted: 'Accepted, live now', rejected: 'Rejected',
+        ruleSays: 'What the rule does:',
+        byEngine: 'Computed by the rule engine on 30 days of history, not by the AI.',
+        ruleFold: 'Rule', nativeFold: 'In your tool’s syntax',
+        draftNote: (d) => `for ${d}, written by the AI; check it before use.`,
+        noDraft: 'No draft this time; the rule above is what runs here.',
+        samplesHidden: 'Alerts it would have silenced last month:',
+        samplesRaised: 'Warnings it would have raised last month:',
+        accept: 'Accept', reject: 'Reject',
+        toast: 'Rule live, watch the strip',
+        stats: {
+          saved: 'alerts saved last month', share: 'of all alerts', caught: 'incidents still caught',
+          right: 'warnings that were right', falseAlarms: 'false alarms', lead: 'median lead time',
+        },
+        errorText: (r) => ({
+          budget: 'The AI budget for this hour is used up, so the AI did not run.',
+          cooldown: 'The AI ran a moment ago and needs a short pause.',
+          ai_unavailable: 'The AI service could not be reached just now.',
+          empty: 'The AI returned an empty answer.',
+          timeout: 'The AI did not finish in three minutes.',
+          no_proposals: 'None of the AI’s proposals held up in the backtest.',
+          cancelled: 'The run stopped because nobody was watching.',
+        }[r] || 'The AI run did not finish.') + ' You can load the last good run instead; its numbers are recomputed now.',
+        busy: 'A run is already in progress.',
+      },
     },
+    eng: { state: 'idle', log: [], saved_available: false, cooldown_s: 0 },
+    proposals: [],
+    engAt: 0,                        // client time when eng.elapsed_s / cooldown_s were received
+    nowMs: Date.now(),
+    engNotice: '',
+    actingOn: null,
+    toast: '',
     incidents: [],
     freshIds: {},
     triage: { degraded: false },
@@ -47,6 +95,84 @@ function desk() {
       this.loadScenarios();
       this.loadRules();
       this.connect();
+      setInterval(() => { this.nowMs = Date.now(); }, 1000);
+    },
+
+    // ---- rule engineer
+    setEng(e) {
+      if (!e) return;
+      this.eng = e;
+      this.engAt = Date.now();
+      this.nowMs = this.engAt;
+    },
+    get engRunning() { return this.eng.state === 'running' || this.eng.state === 'replaying'; },
+    get engIdle() { return this.eng.state === 'idle' || this.eng.state === 'failed'; },
+    get engBusy() { return this.engRunning; },
+    get engFailedWithSaved() { return this.eng.state === 'failed' && !!this.eng.saved_available; },
+    get elapsed() { return (this.eng.elapsed_s || 0) + Math.max(0, (this.nowMs - this.engAt) / 1000); },
+    get cooldownLeft() { return Math.max(0, (this.eng.cooldown_s || 0) - (this.nowMs - this.engAt) / 1000); },
+    get pendingCount() { return this.proposals.filter(p => p.status === 'proposed').length; },
+    fmtT(t) { const s = Math.max(0, Math.round(t || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; },
+    dialectName(d) {
+      return { prometheus: 'Prometheus', zabbix: 'Zabbix', azure_kql: 'Azure Monitor (KQL)', dynatrace: 'Dynatrace',
+               checkmk: 'Checkmk', generic: 'an event manager' }[d] || d;
+    },
+    stats(p) {
+      const b = p.backtest || {}, c = this.copy.eng.stats;
+      if (p.kind === 'precursor') {
+        const lead = b.median_lead_min == null ? '–' : b.median_lead_min >= 90 ? `${(b.median_lead_min / 60).toFixed(1)} h` : `${Math.round(b.median_lead_min)} min`;
+        return [
+          { value: `${b.precursor_true} of ${b.precursor_fired}`, label: c.right },
+          { value: this.fmt(b.precursor_false), label: c.falseAlarms },
+          { value: lead, label: c.lead },
+        ];
+      }
+      return [
+        { value: this.fmt(b.alerts_saved), label: c.saved },
+        { value: `${b.saved_pct}%`, label: c.share },
+        { value: `${b.incidents_visible} of ${b.incidents_total}`, label: c.caught },
+      ];
+    },
+    upsertProposal(p) {
+      const k = this.proposals.findIndex(x => x.id === p.id);
+      if (k < 0) this.proposals = [...this.proposals, p];
+      else this.proposals.splice(k, 1, p);
+    },
+    async engPost(url) {
+      this.engNotice = '';
+      try {
+        const r = await fetch(url, { method: 'POST' });
+        const d = await r.json();
+        if (d.engineer) this.setEng(d.engineer);
+        if (!r.ok) {
+          if (d.error === 'busy') this.engNotice = this.copy.eng.busy;
+          else if (d.error === 'budget') this.eng = { ...this.eng, state: 'failed', error: { reason: 'budget' } };
+        }
+      } catch (e) { this.engNotice = this.copy.eng.errorText('ai_unavailable'); }
+    },
+    runEngineer() { this.proposals = []; return this.engPost('/api/engineer/run'); },
+    loadSaved() { this.proposals = []; return this.engPost('/api/engineer/load-saved'); },
+    async accept(p) {
+      this.actingOn = p.id;
+      try {
+        const r = await fetch(`/api/proposals/${encodeURIComponent(p.id)}/accept`, { method: 'POST' });
+        const d = await r.json();
+        if (r.ok) {
+          this.upsertProposal(d.proposal);
+          this.tab = 'now';
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+          this.toast = this.copy.eng.toast;
+          setTimeout(() => { this.toast = ''; }, 4500);
+        }
+      } finally { this.actingOn = null; }
+    },
+    async reject(p) {
+      this.actingOn = p.id;
+      try {
+        const r = await fetch(`/api/proposals/${encodeURIComponent(p.id)}/reject`, { method: 'POST' });
+        const d = await r.json();
+        if (r.ok) this.upsertProposal(d.proposal);
+      } finally { this.actingOn = null; }
     },
 
     async loadRules() {
@@ -122,6 +248,22 @@ function desk() {
         if (m.triage) this.triage = m.triage;
         if (m.budget) this.budget = m.budget;
         if (m.type === 'reset') { this.notice = ''; this.incidents = []; }
+        if (m.engineer) this.setEng(m.engineer);
+        if (m.proposals) this.proposals = m.proposals;
+      } else if (m.type === 'engineer_state') {
+        const fresh = m.engineer.run_id !== this.eng.run_id;
+        this.setEng(m.engineer);
+        if (fresh) this.proposals = [];
+      } else if (m.type === 'engineer_log') {
+        if (m.run_id === this.eng.run_id && !this.eng.log.some(l => l.t === m.entry.t && l.text === m.entry.text)) {
+          this.eng.log = [...this.eng.log, m.entry];
+        }
+      } else if (m.type === 'engineer_proposal') {
+        if (m.run_id === this.eng.run_id) this.upsertProposal(m.proposal);
+      } else if (m.type === 'engineer_done') {
+        if (m.run_id === this.eng.run_id) this.eng = { ...this.eng, state: 'done', summary: m.summary };
+      } else if (m.type === 'engineer_error') {
+        if (m.run_id === this.eng.run_id) this.eng = { ...this.eng, state: 'failed', error: m };
       } else if (m.type === 'incident_upsert') {
         this.upsertIncident(m.incident);
       } else if (m.type === 'incident_delta') {
@@ -209,6 +351,14 @@ function desk() {
       return Math.max(10, ...this.strip.map(b => b.passed + b.filtered));
     },
     pct(n) { return (100 * n / this.stripMax).toFixed(1) + '%'; },
+    markerRow(mk) {
+      // markers within 4 minutes of an earlier one stack their labels downwards instead of overlapping
+      const vis = this.markers.filter(m => this.markerLeft(m) !== null);
+      const i = vis.indexOf(mk);
+      let row = 0;
+      for (let j = i - 1; j >= 0 && Date.parse(mk.ts) - Date.parse(vis[j].ts) < 4 * 60000; j--) row++;
+      return Math.min(row, 4);
+    },
     markerLeft(mk) {
       const t = mk.ts.slice(0, 16);
       const i = this.strip.findIndex(b => b.t.slice(0, 16) === t);
@@ -271,7 +421,7 @@ function desk() {
     </div>
     <nav class="tabs" role="tablist" aria-label="Screens">
       <button class="tab" role="tab" :aria-selected="tab === 'now'" @click="tab = 'now'">Now</button>
-      <button class="tab" role="tab" :aria-selected="tab === 'proposals'" @click="tab = 'proposals'">Proposals</button>
+      <button class="tab" role="tab" :aria-selected="tab === 'proposals'" @click="tab = 'proposals'">Proposals<span class="tab-count" x-show="pendingCount" x-text="pendingCount"></span></button>
     </nav>
     <div class="tools">
       <button class="chip" @click="$refs.rulesDlg.showModal()" x-text="`Active rules (${activeCount})`">Active rules (0)</button>
@@ -308,6 +458,7 @@ function desk() {
   </div>
 
   <p class="notice" x-show="notice" x-cloak x-text="notice"></p>
+  <p class="toast" x-show="toast" x-cloak x-transition.opacity.duration.300ms role="status" x-text="toast"></p>
 
   <section class="card panel" aria-labelledby="strip-title">
     <div class="panel-head">
@@ -325,7 +476,7 @@ function desk() {
         </div>
       </template>
       <template x-for="mk in markers" :key="mk.ts + mk.label">
-        <div class="marker" x-show="markerLeft(mk) !== null" :style="`left: ${markerLeft(mk)}`"><span x-text="mk.label"></span></div>
+        <div class="marker" x-show="markerLeft(mk) !== null" :style="`left: ${markerLeft(mk)}`"><span :style="`top: ${markerRow(mk) * 19 - 2}px`" x-text="mk.label"></span></div>
       </template>
     </div>
     <div class="strip-axis"><span>30 min ago</span><span>now</span></div>
@@ -394,12 +545,105 @@ function desk() {
 
 <!-- ===================== Proposals ===================== -->
 <main class="wrap" x-show="tab === 'proposals'" x-cloak>
-  <section class="card prop-intro">
-    <h1>Let AI study 30 days of history</h1>
-    <p>The AI reads a month of alerts from every source, proposes a few plain rules and tests each one against the history before you decide.</p>
-    <button class="btn btn-big" disabled>Ask AI to study 30 days of history</button>
-    <p class="later">Not switched on in this build yet.</p>
+  <!-- before a run, or after a failed one -->
+  <section class="card prop-intro" x-show="engIdle">
+    <h1 x-text="copy.eng.introTitle"></h1>
+    <p x-text="copy.eng.introText"></p>
+    <template x-if="eng.state === 'failed' && eng.error">
+      <div class="eng-error" role="status">
+        <p x-text="copy.eng.errorText(eng.error.reason)"></p>
+        <button class="btn" x-show="eng.saved_available" @click="loadSaved()" x-text="copy.eng.loadSavedBtn(eng.saved_date)"></button>
+      </div>
+    </template>
+    <div class="prop-actions">
+      <!-- after a failure the saved run is the primary way on; the live run becomes the quiet retry -->
+      <button class="btn" :class="engFailedWithSaved ? 'btn-2' : 'btn-big'" @click="runEngineer()"
+              :disabled="engBusy || cooldownLeft > 0" x-text="engFailedWithSaved ? copy.eng.tryAgain : copy.eng.runBtn"></button>
+      <button class="linkish" x-show="eng.saved_available && !engFailedWithSaved" @click="loadSaved()" :disabled="engBusy" x-text="copy.eng.loadSavedLink"></button>
+    </div>
+    <p class="later" x-show="cooldownLeft > 0" x-text="copy.eng.cooldown(cooldownLeft)"></p>
+    <p class="later" x-show="engNotice" x-text="engNotice"></p>
   </section>
+
+  <!-- during a run: only the work log -->
+  <section class="card worklog" x-show="engRunning" aria-labelledby="wl-title">
+    <div class="wl-head">
+      <h2 id="wl-title" x-text="eng.mode === 'saved' ? copy.eng.replayingTitle(eng.replay_date) : copy.eng.runningTitle"></h2>
+      <span class="wl-time" x-show="eng.mode !== 'saved'" x-text="copy.eng.elapsed(elapsed)"></span>
+    </div>
+    <ol class="wl-lines" aria-live="polite">
+      <template x-for="(l, i) in eng.log" :key="i">
+        <li :class="l.kind"><span class="wl-t" x-text="fmtT(l.t)"></span><span class="wl-x" x-text="l.text"></span></li>
+      </template>
+      <li class="wl-cursor" aria-hidden="true"><span class="wl-t"></span><span class="wl-x"></span></li>
+    </ol>
+  </section>
+
+  <!-- after a run: total, cards, the log folded away -->
+  <template x-if="eng.state === 'done'">
+    <section class="results">
+      <div class="res-head">
+        <span class="chip saved-chip" x-show="eng.mode === 'saved'" x-text="copy.eng.savedChip(eng.replay_date)"></span>
+        <p class="res-sum" x-text="eng.summary"></p>
+        <div class="res-tools">
+          <details class="wl-fold">
+            <summary x-text="copy.eng.howItWorked(eng.log.length)"></summary>
+            <ol class="wl-lines small">
+              <template x-for="(l, i) in eng.log" :key="i">
+                <li :class="l.kind"><span class="wl-t" x-text="fmtT(l.t)"></span><span class="wl-x" x-text="l.text"></span></li>
+              </template>
+            </ol>
+          </details>
+          <button class="linkish" @click="runEngineer()" :disabled="engBusy || cooldownLeft > 0"
+                  x-text="cooldownLeft > 0 ? copy.eng.cooldown(cooldownLeft) : copy.eng.runAgain"></button>
+        </div>
+      </div>
+      <div class="prop-grid">
+        <template x-for="p in proposals" :key="p.id">
+          <article class="prop" :class="[`k-${p.kind}`, p.status]" :aria-label="p.title">
+            <div class="prop-top">
+              <span class="kchip" :class="`k-${p.kind}`" x-text="copy.eng.kind[p.kind]"></span>
+              <span class="prop-state" x-show="p.status === 'accepted'" x-text="copy.eng.accepted"></span>
+              <span class="prop-state" x-show="p.status === 'rejected'" x-text="copy.eng.rejected"></span>
+            </div>
+            <h3 class="prop-title" x-text="p.title"></h3>
+            <p class="prop-why" x-text="p.reasoning"></p>
+            <p class="prop-rule"><span x-text="copy.eng.ruleSays"></span> <span x-text="p.description"></span></p>
+            <div class="prop-stats">
+              <template x-for="s in stats(p)" :key="s.label">
+                <div class="stat"><b x-text="s.value"></b><span x-text="s.label"></span></div>
+              </template>
+            </div>
+            <p class="prop-engine" x-text="copy.eng.byEngine"></p>
+            <details class="prop-fold">
+              <summary x-text="copy.eng.ruleFold"></summary>
+              <pre class="code" x-text="p.rule_json"></pre>
+            </details>
+            <details class="prop-fold">
+              <summary x-text="copy.eng.nativeFold"></summary>
+              <template x-if="p.native_draft">
+                <div>
+                  <p class="draft-label"><span x-text="p.native_draft.label"></span> <span x-text="copy.eng.draftNote(dialectName(p.native_draft.dialect))"></span></p>
+                  <pre class="code" x-text="p.native_draft.text"></pre>
+                </div>
+              </template>
+              <p class="draft-none" x-show="!p.native_draft" x-text="copy.eng.noDraft"></p>
+              <template x-if="p.backtest && p.backtest.samples && p.backtest.samples.length">
+                <div>
+                  <p class="samples-label" x-text="p.kind === 'precursor' ? copy.eng.samplesRaised : copy.eng.samplesHidden"></p>
+                  <ul class="samples"><template x-for="(s, i) in p.backtest.samples" :key="i"><li x-text="s"></li></template></ul>
+                </div>
+              </template>
+            </details>
+            <div class="prop-foot" x-show="p.status === 'proposed'">
+              <button class="btn" @click="accept(p)" :disabled="actingOn === p.id" x-text="copy.eng.accept"></button>
+              <button class="btn btn-2" @click="reject(p)" :disabled="actingOn === p.id" x-text="copy.eng.reject"></button>
+            </div>
+          </article>
+        </template>
+      </div>
+    </section>
+  </template>
 </main>
 
 <!-- ===================== dialogs ===================== -->

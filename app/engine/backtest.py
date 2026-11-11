@@ -211,6 +211,35 @@ def backtest(rule_in: Union[dict, str, Rule], active_rules: Optional[Iterable[An
     return BacktestResult(**res)
 
 
+def backtest_set(rules_in: list[Union[dict, Rule]], active_rules: Optional[Iterable[Any]] = None,
+                 history: Optional[History] = None) -> BacktestResult:
+    """Score several candidate rules together on top of the active rules (one replay with all of
+    them): the combined figure for a set of proposals. Precursor statistics are not computed."""
+    cands: list[RuleSpec] = []
+    for i, r in enumerate(rules_in):
+        rule, errs = validate(r)
+        if errs:
+            raise RuleInvalid([f"rule {i}: {e}" for e in errs])
+        cands.append((f"{CANDIDATE_ID}-{i}", f"Candidate {i}", rule))
+    if active_rules is None:
+        from app.engine.store import get_store
+        active_rules = get_store().enabled()
+    specs = _as_specs(active_rules)
+    hist = history or load_history()
+    key = _spec_key(specs)
+    base = hist._baseline.get(key)
+    if base is None:
+        base = hist._baseline[key] = _replay(hist, specs)
+    after = _replay(hist, specs + cands)
+    vis_before, vis_after = _visible_incidents(hist, base), _visible_incidents(hist, after)
+    saved = base.alerts - after.alerts
+    return BacktestResult(
+        alerts_before=base.alerts, alerts_after=after.alerts, alerts_saved=saved,
+        saved_pct=(round(100.0 * saved / base.alerts, 1) + 0.0) if base.alerts else 0.0,
+        incidents_total=len(hist.incidents), incidents_visible=len(vis_after),
+        incidents_hidden=len(vis_before - vis_after))
+
+
 def backtest_tool(rule_in: Union[dict, str], active_rules: Optional[Iterable[Any]] = None) -> dict:
     """Agent-friendly wrapper: {"ok": true, "backtest": {...}} or {"ok": false, "errors": [...]}."""
     try:

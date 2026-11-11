@@ -184,7 +184,7 @@ class BacktestResult(BaseModel):
     samples: list[str] = Field(default_factory=list, max_length=5)  # suppressed lines
 
 
-NativeDialect = Literal["prometheus", "zabbix", "azure_kql", "dynatrace"]
+NativeDialect = Literal["prometheus", "zabbix", "azure_kql", "dynatrace", "checkmk", "generic"]
 
 
 class NativeDraft(BaseModel):
@@ -203,6 +203,9 @@ class Proposal(BaseModel):
     title: str
     reasoning: str
     rule: Rule
-    backtest: Optional[BacktestResult] = None
+    description: str = ""                     # deterministic plain English (rules.describe)
+    backtest: Optional[BacktestResult] = None # computed by the engine, never by the model
     native_draft: Optional[NativeDraft] = None
     status: Literal["proposed", "accepted", "rejected"] = "proposed"
+    origin: Literal["live", "saved"] = "live"
+    active_rule_id: Optional[str] = None      # set once accepted

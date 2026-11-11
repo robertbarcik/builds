@@ -16,15 +16,16 @@ models:
     timeout_s: 30
     temperature: 0.2
   # short streamed incident summaries (same model: low latency to first token)
+  # (incident summaries ask for 220 tokens; the engineer's native-syntax drafts for 700)
   render:
     id: openai/gpt-4.1-mini
-    max_tokens: 220
+    max_tokens: 700
     timeout_s: 20
     temperature: 0.3
   # strong tool-calling model for the batch rule-engineer loop
   engineer:
     id: anthropic/claude-sonnet-5.5
-    max_tokens: 2500
+    max_tokens: 4000
     timeout_s: 60
     temperature: 0.2
 
@@ -37,7 +38,10 @@ caps:
   usd_per_hour_global: 2.00
   calls_per_hour_session: 450
   usd_per_hour_session: 1.00
-  engineer_runs_per_10_min: 1
+  # one rule-engineer run start per cooldown, globally. The plan says one per 10 minutes; 90 s
+  # keeps a live demo sitting moving (a run costs about $0.2-0.4; the per-session dollar cap
+  # above still limits the engineer, which runs as session "engineer", to $1 an hour).
+  engineer_cooldown_s: 90
   engineer_max_tool_calls: 14
   engineer_max_seconds: 180
   triage_interval_s: 8
