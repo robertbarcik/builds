@@ -6,9 +6,11 @@ a fake time function. `run()` is the asyncio loop that publishes to the SSE hub 
 the clock run while at least one browser is connected.
 
 Extension points for later milestones:
-- `self.filter`: callable(Event) -> bool (True = passed). The rule engine plugs in here; the
-  strip then stacks filtered vs passed per minute.
-- `self.listeners`: callables(list[Event]) receiving every released batch (triage loop).
+- `self.rules_hook`: the rule engine (app/engine/runtime.RuleRuntime). Every raw event goes
+  through `process(ev)`; the strip stacks what reached a human vs what rules filtered per
+  minute. (`self.filter`, callable(Event) -> bool, is the simpler fallback when no hook is set.)
+- `self.listeners`: callables(list[Event]) receiving each step's SURVIVORS: the events that got
+  past the rules, including early warnings / grouped alerts rules created (triage loop).
 - `add_marker(label)`: a labelled marker on the strip where a rule went live.
 """
 from __future__ import annotations
@@ -54,7 +56,13 @@ class LiveSim:
         self.tick_s = float(sim_cfg.get("tick_ms", 250)) / 1000
         self.clock = SimClock(self.start_ts, float(sim_cfg.get("speed", 60)), time_fn)
         self.filter: Optional[Callable[[Event], bool]] = None
+        # the rule engine (app/engine/runtime.py): process(ev) / advance(now) ->
+        # (events that reach a human, events dropped); takes precedence over `filter`
+        self.rules_hook: Optional[Any] = None
         self.listeners: list[Callable[[list[Event]], None]] = []
+        self.last_survivors: list[Event] = []
+        self.last_created: list[Event] = []
+        self.last_filtered_ids: set[str] = set()
         self.epoch = 0
         self.reset_state()
 
@@ -173,34 +181,58 @@ class LiveSim:
                 self._start_auto(now)
             self._next_auto = now + self.auto_every
         out: list[Event] = []
+        self.last_survivors = []
+        self.last_created = []
+        self.last_filtered_ids = set()
         while self._pending and self._pending[0][0] <= now:
             ts, _, raw = heapq.heappop(self._pending)
             ev = self._finalise(raw)
-            passed = True if self.filter is None else bool(self.filter(ev))
             minute = int(ts // 60 * 60)
-            b = self.buckets.setdefault(minute, [0, 0])
-            b[0 if passed else 1] += 1
             self.total += 1
-            if passed:
-                self.passed_total += 1
-            else:
-                self.filtered_total += 1
             self.tail.appendleft(ev)
             self.recent.append(ev)
             out.append(ev)
+            if self.rules_hook is not None:
+                survivors, dropped = self.rules_hook.process(ev)
+                self._account(minute, survivors, dropped)
+                if not any(s.id == ev.id for s in survivors):
+                    self.last_filtered_ids.add(ev.id)     # dropped, or held for a while
+            else:
+                passed = True if self.filter is None else bool(self.filter(ev))
+                self._account(minute, [ev] if passed else [], 0 if passed else 1)
+                if not passed:
+                    self.last_filtered_ids.add(ev.id)
+        if self.rules_hook is not None:
+            # alerts a rule held (retune sustain, correlate window) come out when time passes
+            survivors, dropped = self.rules_hook.advance(now)
+            self._account(int(now // 60 * 60), survivors, dropped)
         if self.inject and now >= self.inject["until_sim"]:
             self.inject = None
             self._inject_ended_real = self.time_fn()
         old = int(now // 60 * 60) - (STRIP_MINUTES + 5) * 60
         for k in [k for k in self.buckets if k < old]:
             del self.buckets[k]
-        if out:
+        if self.last_survivors:
             for fn in self.listeners:
                 try:
-                    fn(out)
+                    fn(list(self.last_survivors))
                 except Exception:          # a listener must never stop the stream
                     log.exception("live listener failed")
         return out
+
+    def _account(self, minute: int, survivors: list[Event], dropped: int) -> None:
+        """Strip and counters: survivors reach a human, dropped events were filtered by rules."""
+        b = self.buckets.setdefault(minute, [0, 0])
+        b[0] += len(survivors)
+        b[1] += dropped
+        self.passed_total += len(survivors)
+        self.filtered_total += dropped
+        self.last_survivors.extend(survivors)
+        for s in survivors:
+            if s.produced_by:                 # early warnings and grouped alerts made by a rule
+                self.last_created.append(s)
+                self.tail.appendleft(s)
+                self.recent.append(s)
 
     # ------------------------------------------------------------ payloads (no truth, ever)
 
@@ -212,16 +244,29 @@ class LiveSim:
             rows.append({"t": iso(k), "passed": p, "filtered": f})
         return rows
 
+    def events_payload(self, events: list[Event]) -> list[dict[str, Any]]:
+        """Raw events of the last step (each flagged `filtered` if no human sees it), then the
+        events rules created in it (early warnings, grouped alerts: `produced_by` set)."""
+        out = [{**e.public(), "filtered": e.id in self.last_filtered_ids} for e in events]
+        out.extend(e.public() for e in self.last_created)
+        return out
+
     def tick_payload(self) -> dict[str, Any]:
-        return {
+        d = {
             "sim_ts": iso(self.clock.now()), "speed": self.clock.speed, "paused": self.clock.paused,
             "total": self.total, "passed": self.passed_total, "filtered": self.filtered_total,
             "strip": self.strip(), "markers": list(self.markers), "inject": self.inject_state(),
             "clients": self.hub.client_count,
         }
+        if self.rules_hook is not None:
+            d.update(self.rules_hook.tick_info())
+        return d
 
     def snapshot(self) -> dict[str, Any]:
-        return {**self.tick_payload(), "epoch": self.epoch, "tail": [e.public() for e in self.tail]}
+        d = {**self.tick_payload(), "epoch": self.epoch, "tail": [e.public() for e in self.tail]}
+        if self.rules_hook is not None:
+            d["rules"] = self.rules_hook.payload()
+        return d
 
     # ------------------------------------------------------------ asyncio loop
 
@@ -235,8 +280,8 @@ class LiveSim:
                     continue
                 self.clock.resume()
                 events = self.step()
-                if events:
-                    self.hub.publish("events", {"events": [e.public() for e in events]})
+                if events or self.last_created:
+                    self.hub.publish("events", {"events": self.events_payload(events)})
                 if self.time_fn() - last_tick >= 1.0:
                     last_tick = self.time_fn()
                     self.hub.publish("tick", self.tick_payload())

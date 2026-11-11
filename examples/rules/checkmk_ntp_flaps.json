@@ -1,0 +1,9 @@
+{
+  "title": "Checkmk NTP flaps",
+  "rule": {
+    "kind": "suppress",
+    "match": {"source": "checkmk", "title_contains": "NTP Time WARN", "severity_in": ["warning"]},
+    "window_min": 1440,
+    "max_per_window": 1
+  }
+}

@@ -52,6 +52,9 @@ class Event(BaseModel):
     value: Optional[float] = None
     threshold: Optional[float] = None
     raw: dict[str, Any] = Field(default_factory=dict)
+    # set on events a rule made: an early warning (precursor) or a grouped alert (correlate)
+    produced_by: Optional[str] = None          # active rule id
+    children: list[str] = Field(default_factory=list)   # grouped / triggering event ids
     truth: Optional[Truth] = None
 
     def public(self) -> dict[str, Any]:

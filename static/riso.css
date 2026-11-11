@@ -82,6 +82,14 @@ main.wrap { padding-top: 40px; padding-bottom: 70px; }
 .strip-axis { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--muted); font-weight: 600; margin-top: 6px; }
 .legend { display: flex; gap: 16px; font-size: 13px; color: var(--muted); font-weight: 600; }
 .legend i { display: inline-block; width: 11px; height: 11px; margin-right: 6px; vertical-align: -1px; }
+.legend .key-pass { background: var(--blue); }
+.legend .key-filt { background: var(--neutral); opacity: .55; }
+
+/* headline: what came in -> what got past the rules */
+.headline { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 4px 22px; }
+.headline > div > span { display: block; margin-top: 8px; font-size: 15px; color: var(--muted); font-weight: 700; }
+.headline .hl-in b { color: var(--muted); text-shadow: none; }
+.headline .hl-arrow { font-size: clamp(2rem, 5vw, 3.2rem); font-weight: 800; line-height: 1; color: var(--navy); padding-bottom: 32px; }
 .panel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
 .panel-head .section-title { margin-bottom: 0; }
 
@@ -100,6 +108,9 @@ main.wrap { padding-top: 40px; padding-bottom: 70px; }
 .lines .v { flex: 0 0 8.5em; overflow: hidden; text-overflow: ellipsis; font-family: var(--font); font-size: 11.5px; font-weight: 700; border: 1.5px solid var(--rule); padding: 0 5px; color: var(--navy); opacity: .75; }
 .lines .msg { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
 .lines .h { opacity: .75; }
+.lines li.filtered { opacity: .38; text-decoration: line-through; text-decoration-color: var(--rule); }
+.lines li.made { color: var(--navy); font-weight: 700; }
+.lines li.made .v { background: var(--yellow); border-color: var(--navy); opacity: 1; }
 .sev { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; align-self: center; background: var(--neutral); }
 .sev.critical, .sev.major { background: var(--danger); }
 .sev.minor, .sev.warning { background: var(--warn-fill); }
@@ -127,6 +138,23 @@ dialog.sheet.small { width: min(520px, calc(100vw - 24px)); }
 .tile:disabled { opacity: .45; box-shadow: none; }
 .wait { margin-top: 18px; font-weight: 700; color: var(--muted); min-height: 1.5em; }
 .rules-empty { color: var(--muted); padding: 10px 0 4px; }
+.rule-list { list-style: none; border-top: 2px solid var(--navy); }
+.rule-row { display: flex; gap: 18px; align-items: flex-start; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid var(--rule); }
+.rule-row.off .rule-main { opacity: .5; }
+.rule-main { min-width: 0; }
+.rule-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.rule-head b { font-size: 1.05rem; }
+.rule-head .chip.kind { font-size: 12px; padding: 1px 7px; border-width: 1.5px; }
+.rule-head .chip.kind:hover { background: transparent; }
+.rule-desc { margin-top: 4px; font-size: 14.5px; line-height: 1.4; }
+.rule-count { margin-top: 4px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.switch { position: relative; flex: 0 0 auto; width: 46px; height: 26px; margin-top: 2px; }
+.switch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; z-index: 1; }
+.switch .knob { position: absolute; inset: 0; border: 2px solid var(--navy); background: var(--neutral-bg); }
+.switch .knob::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; background: var(--navy); transition: transform .12s; }
+.switch input:checked + .knob { background: var(--blue); }
+.switch input:checked + .knob::after { transform: translateX(20px); background: var(--paper); }
+.switch input:focus-visible + .knob { outline: 3px solid var(--pink); outline-offset: 3px; }
 
 /* ---------- Proposals tab ---------- */
 .prop-intro { padding: 34px 30px; max-width: 720px; }

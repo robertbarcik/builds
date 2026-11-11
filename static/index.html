@@ -16,10 +16,14 @@ function desk() {
     connected: false,
     simTs: '',
     total: 0,
+    passed: 0,
+    filtered: 0,
     strip: [],
     markers: [],
     tail: [],
-    rules: [],                       // active rules (rule engine milestone)
+    rules: [],                       // all rules (on and off) with live counts
+    // headline wording in one place: the triage milestone swaps the right side for incidents
+    copy: { inLabel: 'alerts came in', outLabel: 'got past the rules' },
     scenarios: [],
     inject: { active: null, remaining_s: 0, cooldown_s: 0 },
     notice: '',
@@ -27,7 +31,38 @@ function desk() {
 
     init() {
       this.loadScenarios();
+      this.loadRules();
       this.connect();
+    },
+
+    async loadRules() {
+      try {
+        const r = await fetch('/api/rules', { cache: 'no-store' });
+        this.rules = (await r.json()).rules;
+      } catch (e) { /* the stream's hello carries them too */ }
+    },
+    get activeCount() { return this.rules.filter(r => r.enabled).length; },
+    ruleCount(r) {
+      if (r.kind === 'precursor') return r.raised === 1 ? 'Raised 1 early warning so far' : `Raised ${this.fmt(r.raised)} early warnings so far`;
+      if (r.kind === 'correlate') return `Saved ${this.fmt(r.filtered)} alerts by grouping so far`;
+      return r.filtered === 1 ? 'Filtered 1 alert so far' : `Filtered ${this.fmt(r.filtered)} alerts so far`;
+    },
+    async toggleRule(r, on) {
+      r.enabled = on;
+      try {
+        const res = await fetch(`/api/rules/${encodeURIComponent(r.id)}/toggle`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: on }),
+        });
+        if (!res.ok) await this.loadRules();
+      } catch (e) { await this.loadRules(); }
+    },
+    applyCounts(counts) {
+      if (!counts) return;
+      for (const r of this.rules) {
+        const c = counts[r.id];
+        if (c) { r.filtered = c.filtered; r.raised = c.raised; }
+      }
     },
 
     async loadScenarios() {
@@ -66,6 +101,7 @@ function desk() {
 
     handle(m) {
       if (m.type === 'hello' || m.type === 'reset') {
+        if (m.rules) this.rules = m.rules;
         this.applyTick(m);
         this.tail = m.tail || [];
         if (m.type === 'reset') this.notice = '';
@@ -75,12 +111,17 @@ function desk() {
         this.tail = [...m.events.slice().reverse(), ...this.tail].slice(0, 10);
       } else if (m.type === 'inject') {
         this.inject = m;
+      } else if (m.type === 'rule_changed') {
+        this.rules = m.rules;
       }
     },
 
     applyTick(m) {
       this.simTs = m.sim_ts;
       this.total = m.total;
+      this.passed = m.passed || 0;
+      this.filtered = m.filtered || 0;
+      this.applyCounts(m.rule_counts);
       this.strip = m.strip || [];
       this.markers = m.markers || [];
       if (m.inject) {
@@ -110,6 +151,7 @@ function desk() {
       return secs ? s.slice(11, 19) : s.slice(11, 16);
     },
     sevClass(e) { return e.status === 'resolved' ? 'ok' : e.severity; },
+    lineMsg(e) { return e.status === 'resolved' ? e.title : `${e.native_severity}  ${e.title}`; },
 
     // ---- break something
     get injectWait() {
@@ -159,7 +201,7 @@ function desk() {
       <button class="tab" role="tab" :aria-selected="tab === 'proposals'" @click="tab = 'proposals'">Proposals</button>
     </nav>
     <div class="tools">
-      <button class="chip" @click="$refs.rulesDlg.showModal()" x-text="`Active rules (${rules.length})`">Active rules (0)</button>
+      <button class="chip" @click="$refs.rulesDlg.showModal()" x-text="`Active rules (${activeCount})`">Active rules (0)</button>
       <button class="chip" @click="$refs.aiDlg.showModal()" aria-label="About the AI on this page">AI notice</button>
       <button class="linkish" @click="resetDemo()">Reset demo</button>
     </div>
@@ -170,8 +212,11 @@ function desk() {
 <main class="wrap" x-show="tab === 'now'">
   <div class="head">
     <div class="stat">
-      <b x-text="fmt(total)">0</b>
-      <span>alerts since the demo started</span>
+      <div class="headline" aria-live="off">
+        <div class="hl-in"><b x-text="fmt(total)">0</b><span x-text="copy.inLabel">alerts came in</span></div>
+        <div class="hl-arrow" aria-hidden="true">&rarr;</div>
+        <div class="hl-out"><b x-text="fmt(passed)">0</b><span x-text="copy.outLabel">got past the rules</span></div>
+      </div>
       <div class="clock" x-show="simTs" x-cloak>
         Simulated time <span x-text="clock(simTs)"></span>, one minute per second
         <span x-show="!connected"> (reconnecting)</span>
@@ -186,8 +231,8 @@ function desk() {
     <div class="panel-head">
       <h2 class="section-title" id="strip-title">Alerts per minute</h2>
       <div class="legend">
-        <span><i style="background: var(--blue)"></i>Reach a human</span>
-        <span x-show="strip.some(b => b.filtered > 0)" x-cloak><i style="background: var(--neutral); opacity: .55"></i>Filtered by rules</span>
+        <span><i class="key-filt"></i>Filtered by rules</span>
+        <span><i class="key-pass"></i>Reach a human</span>
       </div>
     </div>
     <div class="strip" role="img" aria-label="Alerts per simulated minute over the last 30 minutes">
@@ -217,12 +262,12 @@ function desk() {
     </div>
     <ul class="lines">
       <template x-for="e in tail" :key="e.id">
-        <li>
+        <li :class="{ filtered: e.filtered, made: e.produced_by }" :title="e.filtered ? 'Filtered by a rule' : ''">
           <span class="t" x-text="clock(e.ts, true)"></span>
           <span class="sev" :class="sevClass(e)"></span>
-          <span class="v" x-text="e.vendor"></span>
+          <span class="v" x-text="e.produced_by ? 'By rule' : e.vendor"></span>
           <span class="h" x-text="e.host"></span>
-          <span class="msg" x-text="e.status === 'resolved' ? e.title : `${e.native_severity}  ${e.title}`"></span>
+          <span class="msg" x-text="lineMsg(e)"></span>
         </li>
       </template>
     </ul>
@@ -261,9 +306,26 @@ function desk() {
   <form method="dialog"><button class="d-close">Close</button></form>
   <div class="sheet-body">
     <h2 id="rules-title">Active rules</h2>
+    <p class="sub">Plain rules that run on every alert. Accepted proposals join this list.</p>
     <template x-if="rules.length === 0">
-      <p class="rules-empty">No rules are live yet. Accepted proposals appear here, each with its own on and off switch.</p>
+      <p class="rules-empty">No rules yet. Accepted proposals appear here, each with its own on and off switch.</p>
     </template>
+    <ul class="rule-list">
+      <template x-for="r in rules" :key="r.id">
+        <li class="rule-row" :class="{ off: !r.enabled }">
+          <div class="rule-main">
+            <div class="rule-head"><b x-text="r.title"></b><span class="chip kind" x-text="r.kind_label"></span></div>
+            <p class="rule-desc" x-text="r.description"></p>
+            <p class="rule-count" x-text="r.enabled || r.filtered || r.raised ? ruleCount(r) : 'Switched off'"></p>
+          </div>
+          <label class="switch">
+            <input type="checkbox" role="switch" :checked="r.enabled" @change="toggleRule(r, $event.target.checked)"
+                   :aria-label="`${r.title}: ${r.enabled ? 'on' : 'off'}`">
+            <span class="knob" aria-hidden="true"></span>
+          </label>
+        </li>
+      </template>
+    </ul>
   </div>
 </dialog>
 

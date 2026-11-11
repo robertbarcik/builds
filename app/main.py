@@ -12,7 +12,12 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from typing import Optional, Union
+
 from app.config import STATIC_DIR, key_present, load_config, model_ids
+from app.engine.runtime import RuleRuntime
+from app.engine.store import get_store
+from app.models import ActiveRule, Rule
 from app.sim.catalog import CUSTOMERS
 from app.sim.live import InjectRefused, LiveSim
 from app.sim.scenarios import SCENARIOS
@@ -28,6 +33,13 @@ STARTED_AT = time.time()
 CFG = load_config()
 hub = Hub()
 sim = LiveSim(CFG["sim"], hub)
+rules = RuleRuntime(get_store(), sim, hub)       # filters the live stream via sim.rules_hook
+
+
+def activate_rule(rule: Union[Rule, dict], title: str, proposal_id: Optional[str] = None) -> ActiveRule:
+    """Put a rule live now: validate, store, rebuild the engine, draw a strip marker, publish
+    `rule_changed`. Raises ValueError with the validation errors. Used when a proposal is accepted."""
+    return rules.activate(rule, title, proposal_id=proposal_id)
 
 
 @asynccontextmanager
@@ -94,8 +106,46 @@ async def inject(request: Request) -> JSONResponse:
 
 @app.post("/api/reset")
 async def reset() -> JSONResponse:
+    rules.reset()                 # seed rules only, fresh engine, live counts zeroed
     sim.reset()
     return JSONResponse({"ok": True, "epoch": sim.epoch})
+
+
+@app.get("/api/rules")
+async def list_rules() -> JSONResponse:
+    return JSONResponse({"rules": rules.payload()})
+
+
+@app.post("/api/rules/{rule_id}/toggle")
+async def toggle_rule(rule_id: str, request: Request) -> JSONResponse:
+    """Flip a rule on/off, or set it with {"enabled": true|false}."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    enabled = body.get("enabled") if isinstance(body, dict) else None
+    try:
+        r = rules.set_enabled(rule_id, None if enabled is None else bool(enabled))
+    except KeyError:
+        return JSONResponse({"error": "unknown_rule", "rule_id": rule_id}, status_code=404)
+    return JSONResponse({"ok": True, "rule": rules.rule_payload(r)})
+
+
+@app.post("/api/rules")
+async def add_rule(request: Request) -> JSONResponse:
+    """Developer hook (scripts/try_rule.py --activate): {"title": ..., "rule": {...}}."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = None
+    if not isinstance(body, dict) or not isinstance(body.get("rule"), dict):
+        return JSONResponse({"error": "bad_request", "errors": ["body must be {\"title\": ..., \"rule\": {...}}"]},
+                            status_code=400)
+    try:
+        r = activate_rule(body["rule"], str(body.get("title") or ""))
+    except ValueError as e:
+        return JSONResponse({"error": "invalid_rule", "errors": str(e).split("; ")}, status_code=422)
+    return JSONResponse({"ok": True, "rule": rules.rule_payload(r)})
 
 
 @app.get("/api/stream")
