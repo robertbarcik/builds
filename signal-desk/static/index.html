@@ -33,7 +33,7 @@ function desk() {
       emptyBoard: 'Nothing needs a human right now.',
       cause: 'Likely cause', evidence: (n, t) => `Evidence: ${n} alert${n === 1 ? '' : 's'} from ${t} tool${t === 1 ? '' : 's'}`,
       more: (n) => `and ${n} more`, gotIt: 'Got it', writing: 'Writing a summary…',
-      quiet: 'Quiet: no new alerts for 10 min', recovering: 'Recovering: most alerts have cleared',
+      quiet: 'Quiet: no new alerts for a while', recovering: 'Recovering: most alerts have cleared',
       ruleBased: 'Rule-based',
       // recovering cards: templated, above the (dimmed) summary written while the alerts fired
       clearedLine: (hhmm) => `Alerts have cleared since ${hhmm}; confirm the service is back.`,

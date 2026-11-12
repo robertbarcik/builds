@@ -3,8 +3,8 @@
 GenAI alert-triage demo for a customer meeting (an EU IT services company). A person from the
 customer sits at the keyboard: polish and robustness beat features. Concept: **the LLM proposes,
 plain rules run.** Overview and the five-minute run sheet: `README.md`. Plan of record:
-`~/.claude/plans/okay-so-replying-to-crystalline-sifakis.md`. Local git only (branch `main`, no
-remote); do not create a GitHub repo or push unless Robert asks.
+`~/.claude/plans/okay-so-replying-to-crystalline-sifakis.md`. Lives as a folder of the public
+`robertbarcik/builds` repo since 2026-11-12: no customer names, no real data, no secrets.
 
 ## Layout
 
