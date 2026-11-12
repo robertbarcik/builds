@@ -116,13 +116,22 @@ def _sentences(text: str) -> list[str]:
     return [s.strip() for s in re.split(r"(?<=[.!?])\s+", text.strip()) if s.strip()]
 
 
+_STOP = frozenset("and all the has its for with from this that are was not but into onto its their any "
+                  "now also been have which".split())
+
+
+def _content(s: str) -> set[str]:
+    return _words(s) - _STOP
+
+
 def repeats(sentence: str, cause: str) -> bool:
-    """True if a summary sentence only restates the card's likely cause."""
-    ws, wc = _words(sentence), _words(cause)
+    """True if a summary sentence restates the card's likely cause (most of the cause's content
+    words are in it, e.g. "core switch X lost Te1/1/1, cutting off the access switches ...")."""
+    ws, wc = _content(sentence), _content(cause)
     if not ws or not wc:
         return False
     inter = len(ws & wc)
-    return inter / len(ws | wc) >= 0.5 or inter / len(wc) >= 0.75
+    return inter / len(ws | wc) >= 0.5 or inter / len(wc) >= 0.6
 
 
 def drop_repeated_cause(summary: str, cause: str) -> str:
@@ -134,8 +143,8 @@ def drop_repeated_cause(summary: str, cause: str) -> str:
     keep = [s for s in sents if not repeats(s, cause)]
     if keep:
         return " ".join(keep)
-    wc = _words(cause)
-    return min(sents, key=lambda s: len(_words(s) & wc) / max(1, len(_words(s) | wc)))
+    wc = _content(cause)
+    return min(sents, key=lambda s: len(_content(s) & wc) / max(1, len(_content(s) | wc)))
 
 
 def fallback_summary(c: "Card", customer_short: str) -> str:

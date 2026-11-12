@@ -318,6 +318,14 @@ def test_summary_does_not_repeat_the_likely_cause():
     assert drop_repeated_cause("Branch offices cannot reach the ERP.", cause) == "Branch offices cannot reach the ERP."
     assert drop_repeated_cause(cause, cause) == cause                  # never left empty
     assert not repeats("The portal is down for customers.", cause)
+    # paraphrases seen live on 2026-11-12
+    live_cause = "Te1/1/1 on nhl-core-sw-02 went down, cutting off all downstream access switches, branch routers and hosts"
+    assert repeats("Nordhafen's core switch nhl-core-sw-02 has lost its Te1/1/1 interface, causing all connected "
+                   "access switches, branch routers, and hosts to lose network connectivity.", live_cause)
+    assert not repeats("The outage is affecting multiple device types across the network and remains unresolved.",
+                       live_cause)
+    assert repeats("The branch router at Valdorina's Verona site is down, causing loss of network connectivity for "
+                   "all devices relying on this router.", "bva-br-verona-rt01 node is down, causing loss of connectivity")
 
 
 def test_summary_prompt_tells_the_model_not_to_restate_the_cause():

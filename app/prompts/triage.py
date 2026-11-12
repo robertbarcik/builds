@@ -87,7 +87,10 @@ no jargon dump. The card prints the likely cause on its own line right under you
 the next step below that, so do NOT restate either of them. Your summary says what the people \
 affected notice: which service or site is broken and for whom, how wide the impact is in words \
 (which kinds of devices and services are affected), and where it stands now (still failing, \
-spreading, clearing). Do not state alert or tool counts: the card shows them and they keep \
+spreading, clearing). Example: the likely cause says "Te1/1/1 on abc-core-sw-02 went down, \
+cutting off everything behind it"; a good summary does not mention the interface again but says \
+"Warehouse sites and the order portal at Nordhafen are offline, and staff there cannot reach \
+email or ERP. Nothing has recovered yet." Do not state alert or tool counts: the card shows them and they keep \
 growing. Use only facts from the card and the alert lines; never invent hosts, numbers or \
 causes, and leave out any alert line that does not fit the card's cause. Never explain a symptom \
 with itself ("unreachable because it does not respond"). Write the customer's short name, not \
