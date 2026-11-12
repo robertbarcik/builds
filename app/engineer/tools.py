@@ -26,7 +26,7 @@ from typing import Any, Callable, Iterable, Optional
 
 from pydantic import ValidationError
 
-from app.engine.backtest import (TRUE_WARNING_HORIZON_S, History, RuleInvalid, _as_specs, _replay, _spec_key,
+from app.engine.backtest import (MAX_WARNING_HORIZON_S, TRUE_WARNING_HORIZON_S, History, RuleInvalid, _as_specs, _replay, _spec_key,
                                  backtest, load_history)
 from app.engine.rules import Ev, _check_match, compile_match, describe, describe_match, numeric_checks, validate
 from app.models import SEVERITIES, Match
@@ -37,7 +37,8 @@ LOCAL_OFFSET_H = 1                         # the desk works in CET, like the sim
 TICKET_SOURCE, TICKET_CHECK = "servicenow", "incident"
 NEAR_TICKET_BEFORE_MIN = 180               # an alert "near a ticket": up to 3 h before it ...
 NEAR_TICKET_AFTER_MIN = 60                 # ... or up to 1 h after it, same customer
-PRECURSOR_HORIZON_MIN = TRUE_WARNING_HORIZON_S // 60   # same horizon as the backtest
+PRECURSOR_HORIZON_MIN = TRUE_WARNING_HORIZON_S // 60   # the backtest's default horizon (6 h)
+MAX_HORIZON_MIN = MAX_WARNING_HORIZON_S // 60          # and the longest a rule may ask for (72 h)
 FORBIDDEN_KEYS = frozenset({"truth", "role", "pattern", "scenario_id", "incident_id"})
 FORBIDDEN_TEXT = re.compile(r"\b(noise|tight|group|orphan|scenario):[a-z_]+")
 
@@ -462,10 +463,11 @@ def tool_co_occurrence(args: dict, ctx: ToolContext) -> tuple[dict, str]:
 
 
 def _simulate_precursor(alerts: list[Ev], count: int, within_min: int, anchor_times: dict[str, list[float]],
-                        min_lead_min: int = 0) -> tuple[int, int, list[float]]:
+                        min_lead_min: int = 0, horizon_min: int = PRECURSOR_HORIZON_MIN
+                        ) -> tuple[int, int, list[float]]:
     """What a precursor rule on these alerts would have done, judged against the anchors (e.g.
     incident tickets): (warnings, warnings followed by an anchor at least `min_lead_min` and at
-    most the backtest horizon later, leads in minutes)."""
+    most `horizon_min` later, leads in minutes)."""
     recent: dict[str, deque] = defaultdict(deque)
     quiet: dict[str, float] = {}
     fired = ok = 0
@@ -486,18 +488,19 @@ def _simulate_precursor(alerts: list[Ev], count: int, within_min: int, anchor_ti
         fired += 1
         ts = anchor_times.get(c, [])
         i = bisect_left(ts, e.t + min_lead_min * 60)
-        if i < len(ts) and ts[i] <= e.t + PRECURSOR_HORIZON_MIN * 60:
+        if i < len(ts) and ts[i] <= e.t + horizon_min * 60:
             ok += 1
             leads.append((ts[i] - e.t) / 60)
     return fired, ok, leads
 
 
 def _best_precursor(alerts: list[Ev], anchor_times: dict[str, list[float]], within_min: int,
-                    min_lead_min: int = 0) -> Optional[tuple[int, int, int, Optional[float]]]:
+                    min_lead_min: int = 0, horizon_min: int = PRECURSOR_HORIZON_MIN
+                    ) -> Optional[tuple[int, int, int, Optional[float]]]:
     """The count (1-3) that works best as a precursor: (count, warnings, followed, median lead)."""
     best = None
     for c in (1, 2, 3):
-        fired, ok, leads = _simulate_precursor(alerts, c, within_min, anchor_times, min_lead_min)
+        fired, ok, leads = _simulate_precursor(alerts, c, within_min, anchor_times, min_lead_min, horizon_min)
         if not fired:
             continue
         score = (ok > 0, ok / fired, ok)
@@ -508,7 +511,7 @@ def _best_precursor(alerts: list[Ev], anchor_times: dict[str, list[float]], with
 
 def tool_preceded_by(args: dict, ctx: ToolContext) -> tuple[dict, str]:
     m, match = parse_match(args.get("match"))
-    lb = _int(args, "lookback_min", 360, 5, 2880)
+    lb = _int(args, "lookback_min", 360, 5, MAX_HORIZON_MIN)
     min_lead = _int(args, "min_lead_min", 60, 0, 1440)
     if min_lead >= lb:
         raise ToolError("min_lead_min must be smaller than lookback_min")
@@ -559,13 +562,16 @@ def tool_preceded_by(args: dict, ctx: ToolContext) -> tuple[dict, str]:
     chance = _pct(covered, idx.span_min * max(1, len(CUSTOMERS)))
     n_k = len(kept)
     within = min(lb, 1440)
+    # judge "as a rule" with the horizon a rule would need to cover this lookback (horizon_h)
+    horizon = min(max(lb, PRECURSOR_HORIZON_MIN), MAX_HORIZON_MIN)
+    horizon_h = -(-horizon // 60)
     scored = []
     for s in hit:
         if hit[s] < max(2 if n_k >= 4 else 1, 0.25 * n_k):
             continue
         allv = v.by_sig.get(s, [])
         fp = _pct(sum(1 for e in allv if followed(e)), len(allv))
-        sim = _best_precursor(allv, anchor_times, within, min_lead)
+        sim = _best_precursor(allv, anchor_times, within, min_lead, horizon)
         sim_ratio = sim[2] / sim[1] if sim else 0.0
         scored.append((round(hit[s] / max(n_k, 1) * fp, 3), sim_ratio, sig_label(s), s, fp, len(allv), sim))
     scored.sort(key=lambda r: (-r[0], -r[1], r[2]))
@@ -575,8 +581,9 @@ def tool_preceded_by(args: dict, ctx: ToolContext) -> tuple[dict, str]:
         as_rule = ""
         if sim:
             c, fired, ok, lead = sim
-            as_rule = (f" | as a rule, count {c} within {within} min: {fired} warnings, {ok} followed by one "
-                       f"{min_lead} min to {PRECURSOR_HORIZON_MIN // 60} h later"
+            as_rule = (f" | as a rule, count {c} within {within} min"
+                       + (f", horizon_h {horizon_h}" if horizon > PRECURSOR_HORIZON_MIN else "")
+                       + f": {fired} warnings, {ok} followed by one {min_lead} min to {horizon_h} h later"
                        + (f", lead ~{lead:.0f} min" if lead is not None else ""))
         rows.append(f"{sig_label(s)} | before {hit[s]} of {n_k} | median lead {_median(leads[s]):g} min | "
                     f"typically {int(statistics.median(counts[s]))} in the window | {fp}% of its {_n(tot)} alerts "
@@ -766,7 +773,7 @@ TOOL_SCHEMAS: list[dict] = [
     _fn("preceded_by", "Which alerts fire at the same customer in the lookback window BEFORE the matching alerts "
         "(e.g. before an incident ticket), and how often each of them is followed by one. Use it to find early "
         "warnings.",
-        {"match": _MATCH_SCHEMA, "lookback_min": {"type": "integer", "minimum": 5, "maximum": 2880},
+        {"match": _MATCH_SCHEMA, "lookback_min": {"type": "integer", "minimum": 5, "maximum": MAX_HORIZON_MIN},
          "min_lead_min": {"type": "integer", "minimum": 0, "maximum": 1440,
                           "description": "ignore alerts closer than this to the anchor (default 60): a ticket "
                                          "comes 15-60 min after the failure starts, so closer alerts are the "

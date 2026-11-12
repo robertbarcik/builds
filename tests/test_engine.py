@@ -320,6 +320,47 @@ def test_backtest_precursor_true_and_false():
     assert bt.incidents_hidden == 0 and all(s.startswith("raised:") for s in bt.samples)
 
 
+CERT_PRE = {"kind": "precursor", "match": {"source": "checkmk", "title_contains": "Certificate expires"}, "count": 1,
+            "within_min": 1440, "raise": {"title": "Portal certificate about to expire", "severity": "major"}}
+
+
+def cert_history():
+    """A certificate warning 30 h before an expiry (incident C1), and an unrelated one that leads
+    nowhere (an orphan, then a different incident C2 at the same customer 20 h later)."""
+    H = 60
+    rows = [
+        mk("cw1", 0, title="Certificate expires in 2 days on web1", host="web1", check="https_cert",
+           role="precursor", incident="C1"),
+        mk("croot", 30 * H, title="Certificate expired on web1", host="web1", check="https_cert_expired",
+           severity="critical", role="root", incident="C1"),
+        mk("cw2", 100 * H, title="Certificate expires in 2 days on web2", host="web2", check="https_cert"),
+        mk("root2", 120 * H, source="redgate", title="Blocking process on sql1", host="sql1", check="blocking",
+           severity="major", role="root", incident="C2"),
+    ]
+    return history_from_dicts(rows)
+
+
+def test_precursor_credit_window_follows_the_rule_horizon():
+    h = cert_history()
+    short = backtest(CERT_PRE, [], history=h)                      # default 6 h: the 30 h warning is "false"
+    assert (short.precursor_fired, short.precursor_true, short.precursor_false) == (2, 0, 2)
+    long = backtest({**CERT_PRE, "horizon_h": 48}, [], history=h)
+    assert (long.precursor_fired, long.precursor_true, long.precursor_false) == (2, 1, 1)
+    assert long.median_lead_min == 30 * 60.0
+    # even the longest horizon never credits a warning whose alerts are not part of the incident
+    # (cw2 is followed by incident C2 at the same customer 20 h later): false-alarm counting holds
+    widest = backtest({**CERT_PRE, "horizon_h": 72}, [], history=h)
+    assert (widest.precursor_true, widest.precursor_false) == (1, 1)
+
+
+def test_horizon_is_validated_and_described():
+    assert validate({**CERT_PRE, "horizon_h": 73})[1] == ["horizon_h must be a whole number of hours between 1 and 72"]
+    assert validate({**CERT_PRE, "horizon_h": 0})[1]
+    rule, errs = validate({**CERT_PRE, "horizon_h": 48})
+    assert not errs and "Expects the failure within 48 hours." in describe(rule)
+    assert "Expects" not in describe(validate(CERT_PRE)[0])         # default: unchanged wording
+
+
 def test_backtest_correlate_counts_group_as_one_and_keeps_incident():
     rows = [mk("a", 0, source="prtg", title="Ping Down on br1", host="br1", check="ping", severity="critical",
                role="symptom", incident="I9"),
@@ -360,6 +401,23 @@ def test_real_history_incident_hiding_rule_is_flagged():
     bt = backtest(cand, active)
     assert bt.incidents_hidden > 0
     assert bt.incidents_visible == bt.incidents_total - bt.incidents_hidden
+
+
+@needs_history
+def test_real_history_certificate_warning_can_be_proposed():
+    """Certificate expiry warnings come 1-2 days ahead; with a matching horizon the engineer's
+    server-side check keeps such a rule (before, the 6 h window scored every warning false)."""
+    from app.engine.store import seed_rules
+    from app.engineer.agent import drop_reason
+    rule = {"kind": "precursor", "match": {"source": "alertmanager", "title_contains": "TLS certificate"},
+            "count": 1, "within_min": 1440, "raise": {"title": "Portal certificate about to expire",
+                                                      "severity": "major"}}
+    six = backtest(rule, seed_rules())
+    assert six.precursor_fired > 0 and six.precursor_true == 0
+    r48, _ = validate({**rule, "horizon_h": 48})
+    bt = backtest(r48, seed_rules())
+    assert bt.precursor_true >= 3 and bt.incidents_hidden == 0
+    assert drop_reason(r48, bt) is None, (bt.precursor_true, bt.precursor_fired, bt.median_lead_min)
 
 
 @needs_history

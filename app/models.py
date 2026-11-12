@@ -123,6 +123,9 @@ class PrecursorRule(BaseModel):
     count: int = Field(ge=1, le=1000)
     within_min: WindowMin
     raise_: RaiseSpec = Field(alias="raise")
+    # how far ahead the warning is meant to come: the backtest credits it only if the incident it
+    # points to starts within this many hours (default 6 when not given; at most 72)
+    horizon_h: Optional[int] = Field(None, ge=1, le=72)
 
 
 class RetuneRule(BaseModel):

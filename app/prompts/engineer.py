@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from typing import Any, Optional
 
-from app.engine.backtest import TRUE_WARNING_HORIZON_S
+from app.engine.backtest import MAX_WARNING_HORIZON_S, TRUE_WARNING_HORIZON_S
 from app.engine.rules import _KIND_KEYS, _MATCH_KEYS, KINDS, describe, rule_to_dict
 from app.engineer.tools import catalog_reference
 from app.models import SEVERITIES
@@ -19,6 +19,7 @@ from app.sim.catalog import SOURCES
 def dsl_reference() -> str:
     keys = "\n".join(f"  {k}: {', '.join(v)}" for k, v in _KIND_KEYS.items())
     horizon_h = TRUE_WARNING_HORIZON_S / 3600
+    max_h = MAX_WARNING_HORIZON_S / 3600
     return f"""RULE DSL (JSON). Kinds: {', '.join(KINDS)}. Keys per kind (no other keys are accepted):
 {keys}
 match keys (all optional, all given must match): {', '.join(_MATCH_KEYS)}. severity_in uses the \
@@ -28,13 +29,15 @@ name a source, a host_glob or a title_contains.
 - suppress {{match, window_min, max_per_window}}: lets max_per_window matching alerts per host \
 through per window_min and hides the rest; max_per_window 0 hides them all. A suppress rule must \
 not be able to touch critical alerts: always give severity_in without "critical".
-- precursor {{match, count, within_min, raise: {{title, severity}}}}: raises one early-warning \
-alert when `count` matching alerts fire within `within_min` at one customer. It hides nothing \
-(it adds alerts, so its alerts_saved is negative; judge it by warnings that were right, false \
-alarms and lead time). A warning counts as right when an incident at that customer follows within \
-{horizon_h:g} hours. Use count 2 or more when single alerts of that kind also show up without any \
-incident, and make within_min long enough to hold those alerts (preceded_by shows how many \
-typically come and how far ahead).
+- precursor {{match, count, within_min, raise: {{title, severity}}, horizon_h?}}: raises one \
+early-warning alert when `count` matching alerts fire within `within_min` at one customer. It hides \
+nothing (it adds alerts, so its alerts_saved is negative; judge it by warnings that were right, \
+false alarms and lead time). A warning counts as right when the incident it points to starts \
+within horizon_h hours after it (optional whole hours, 1 to {max_h:g}, default {horizon_h:g}); \
+otherwise it is a false alarm. Set horizon_h only when preceded_by shows the warning really \
+comes earlier than {horizon_h:g} hours ahead (then use a lookback_min that covers it). Use count 2 or \
+more when single alerts of that kind also show up without any incident, and make within_min long \
+enough to hold those alerts (preceded_by shows how many typically come and how far ahead).
 - retune {{source, check, op, new_threshold, sustain_min}}: for a numeric check, keeps an alert \
 only if its value is `op new_threshold` (op one of >, >=, <, <=) and it stays open for at least \
 sustain_min minutes; a value that clears sooner is dropped.

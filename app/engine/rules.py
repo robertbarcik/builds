@@ -47,7 +47,7 @@ _RULE_ADAPTER: TypeAdapter = TypeAdapter(Rule)
 _MATCH_KEYS = ("source", "customer", "host_glob", "title_contains", "severity_in")
 _KIND_KEYS = {
     "suppress": ("kind", "match", "window_min", "max_per_window"),
-    "precursor": ("kind", "match", "count", "within_min", "raise"),
+    "precursor": ("kind", "match", "count", "within_min", "raise", "horizon_h"),
     "retune": ("kind", "source", "check", "op", "new_threshold", "sustain_min"),
     "correlate": ("kind", "members", "within_min", "keep"),
 }
@@ -97,6 +97,9 @@ def _pydantic_errors(exc: ValidationError, kind: str) -> list[str]:
             out.append(f"{path} must be a whole number of minutes between 1 and 1440")
         elif last == "sustain_min" and etype in ("greater_than_equal", "less_than_equal"):
             out.append("sustain_min must be between 0 and 1440 minutes")
+        elif last == "horizon_h" and etype in ("greater_than_equal", "less_than_equal", "int_parsing",
+                                               "int_from_float", "int_type"):
+            out.append("horizon_h must be a whole number of hours between 1 and 72")
         elif path == "members" and etype in ("too_short", "too_long"):
             out.append("members must list 2 to 4 matches")
         elif etype == "literal_error" and "severity" in path:
@@ -241,8 +244,10 @@ def describe(rule: Rule) -> str:
         return f"Lets {per} per host through every {_minutes(rule.window_min)} for {what}; hides the repeats."
     if isinstance(rule, PrecursorRule):
         what = describe_match(rule.match)
+        ahead = (f" Expects the failure within {rule.horizon_h} hour{'s' if rule.horizon_h != 1 else ''}."
+                 if rule.horizon_h else "")
         return (f"Raises an early warning “{rule.raise_.title}” ({rule.raise_.severity}) when "
-                f"{rule.count} {what} fire within {_within(rule.within_min)} at one customer. Hides nothing.")
+                f"{rule.count} {what} fire within {_within(rule.within_min)} at one customer.{ahead} Hides nothing.")
     if isinstance(rule, RetuneRule):
         tpl = TEMPLATES.get((rule.source, rule.check))
         unit = (tpl.unit.strip() if tpl else "") or ""

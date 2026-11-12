@@ -176,7 +176,8 @@ def test_preceded_by(ctx):
     row = next(r for r in out["rows"] if r.startswith("netapp/vol_nearly_full"))
     assert "before 1 of 1 | median lead 330 min | typically 2 in the window" in row
     assert "50.0% of its 4 alerts were followed by one" in row
-    assert "2 warnings, 1 followed by one 60 min to 6 h later" in row
+    # judged over the lookback (12 h), the horizon a rule would set with horizon_h
+    assert "horizon_h 12: 2 warnings, 1 followed by one 60 min to 12 h later" in row
     # the root alert 30 min before the ticket is the failure itself, not a warning
     assert not any(r.startswith("netapp/vol_full") for r in out["rows"])
 

@@ -9,8 +9,11 @@ Definitions (all counts are firing alerts; resolve events are not alerts):
   alert); incidents_visible is counted with the candidate; incidents_hidden is how many
   incidents were visible with the active rules but are not with the candidate
 - precursor_*: early warnings the candidate raised; a warning is true if the root of an
-  incident one of its triggering alerts belongs to follows within 6 hours, else a false alarm;
-  median lead = minutes from the warning to that root
+  incident one of its triggering alerts belongs to follows within the rule's horizon
+  (`horizon_h`, default 6 h, capped at 72 h), else a false alarm; median lead = minutes from
+  the warning to that root. The credit needs that causal link (a triggering alert that is part
+  of the incident), so a long horizon cannot turn unrelated alerts into "right" warnings; it
+  only stops a genuine 1-2 day warning (certificate expiry) from being scored as a false alarm.
 - samples: 5 alerts the candidate removed (for a precursor rule: 5 warnings it raised)
 
 The history is loaded and indexed once per process; the baseline replay for a given active
@@ -29,8 +32,17 @@ from app.config import HISTORY_PATH
 from app.engine.rules import Engine, Ev, RuleSpec, rule_to_dict, validate
 from app.models import ActiveRule, BacktestResult, PrecursorRule, Rule
 
-TRUE_WARNING_HORIZON_S = 6 * 3600
+TRUE_WARNING_HORIZON_S = 6 * 3600          # default credit window for an early warning
+MAX_WARNING_HORIZON_S = 72 * 3600          # a rule may ask for a longer one (horizon_h), up to this
 CANDIDATE_ID = "candidate"
+
+
+def warning_horizon_s(rule: PrecursorRule) -> float:
+    """The credit window of a precursor rule: its own `horizon_h` (capped at 72 h), else 6 h.
+    Certificate expiry warnings, for example, come one to two days ahead."""
+    if rule.horizon_h:
+        return float(min(rule.horizon_h * 3600, MAX_WARNING_HORIZON_S))
+    return float(TRUE_WARNING_HORIZON_S)
 
 
 class RuleInvalid(ValueError):
@@ -189,6 +201,7 @@ def backtest(rule_in: Union[dict, str, Rule], active_rules: Optional[Iterable[An
     )
     if isinstance(rule, PrecursorRule):
         mine = [w for w in after.warnings if w.produced_by == CANDIDATE_ID]
+        horizon = warning_horizon_s(rule)
         leads: list[float] = []
         n_true = 0
         for w in mine:
@@ -196,7 +209,7 @@ def backtest(rule_in: Union[dict, str, Rule], active_rules: Optional[Iterable[An
             for cid in w.children:
                 iid = hist.truth.get(cid, ("noise", None))[1]
                 rt = hist.root_t.get(iid) if iid else None
-                if rt is not None and w.t <= rt <= w.t + TRUE_WARNING_HORIZON_S:
+                if rt is not None and w.t <= rt <= w.t + horizon:
                     lead = (rt - w.t) / 60
                     best = lead if best is None else min(best, lead)
             if best is not None:
