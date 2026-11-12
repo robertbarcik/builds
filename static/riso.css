@@ -230,6 +230,7 @@ dialog.sheet.small { width: min(520px, calc(100vw - 24px)); }
 .saved-chip { margin-bottom: 10px; background: var(--cream); cursor: default; }
 .saved-chip:hover { background: var(--cream); }
 .res-sum { font-size: clamp(1.15rem, 2.4vw, 1.4rem); font-weight: 800; line-height: 1.3; font-stretch: 85%; }
+.res-cost { margin-top: 4px; font-size: 14px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
 .res-tools { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 20px; margin-top: 8px; }
 .wl-fold summary, .prop-fold summary { cursor: pointer; font-weight: 700; color: var(--muted); font-size: 14px; padding: 2px 0; }
 .wl-fold summary:hover, .prop-fold summary:hover { color: var(--navy); }

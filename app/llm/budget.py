@@ -8,6 +8,8 @@ Caps (config.yaml `caps`), all over a sliding hour of real time:
 - calls_per_hour_global, usd_per_hour_global: every call of every role
 - calls_per_hour_session, usd_per_hour_session: calls that name a `session` (a visitor, an
   engineer run). Calls without a session (the shared live triage) only count globally.
+- usd_per_day_global (optional): every call over a sliding 24 h; set for a public URL, where a
+  browser tab left open would otherwise keep triage spending all day.
 - the hard `max_tokens` per role (config.yaml `models.<role>.max_tokens`): `max_tokens()`
   clamps any request to it.
 
@@ -24,6 +26,7 @@ from itertools import count
 from typing import Any, Callable, Optional
 
 HOUR = 3600.0
+DAY = 24 * HOUR
 
 
 class BudgetRefused(Exception):
@@ -79,6 +82,7 @@ class Budget:
         self.time_fn = time_fn
         self._ids = count(1)
         self._ledger: deque[CallRecord] = deque()
+        self._day: deque[tuple[float, float]] = deque()      # (ts, usd) of finished calls, 24 h
         self._totals = _Totals()
         self.listeners: list[Callable[[dict[str, Any]], None]] = []
 
@@ -127,6 +131,13 @@ class Budget:
             raise BudgetRefused("calls_per_hour_global", retry)
         if usd >= float(self.caps.get("usd_per_hour_global", float("inf"))):
             raise BudgetRefused("usd_per_hour_global", retry)
+        day_cap = self.caps.get("usd_per_day_global")
+        if day_cap is not None:
+            while self._day and now - self._day[0][0] > DAY:
+                self._day.popleft()
+            if sum(c for _, c in self._day) >= float(day_cap):
+                d_retry = max(0.0, DAY - (now - self._day[0][0])) if self._day else 0.0
+                raise BudgetRefused("usd_per_day_global", d_retry)
         if session is not None:
             s_calls, s_usd, s_oldest = self._window(now, session)
             s_retry = max(0.0, HOUR - (now - s_oldest)) if s_oldest is not None else 0.0
@@ -158,6 +169,8 @@ class Budget:
         rec.completion_tokens = int(completion_tokens or 0)
         rec.cost_usd = self.cost(rec.model, rec.prompt_tokens, rec.completion_tokens)
         rec.ok, rec.done, rec.estimated = ok, True, estimated
+        if rec.cost_usd:
+            self._day.append((rec.ts, rec.cost_usd))
         t = self._totals
         t.calls += 1
         t.failed += 0 if ok else 1
@@ -171,9 +184,12 @@ class Budget:
         return rec
 
     # ------------------------------------------------------------ readouts
-    def cost_last(self, seconds: float = 60.0) -> float:
+    def cost_last(self, seconds: float = 60.0, shared_only: bool = False) -> float:
+        """Dollars spent in the last `seconds`. `shared_only`: only calls without a session, i.e.
+        the always-on live triage (the one-off rule-engineer run is session "engineer")."""
         now = self.time_fn()
-        return sum(r.cost_usd for r in self._ledger if now - r.ts <= seconds)
+        return sum(r.cost_usd for r in self._ledger
+                   if now - r.ts <= seconds and not (shared_only and r.session is not None))
 
     def calls_last(self, seconds: float = 60.0) -> int:
         now = self.time_fn()
@@ -192,7 +208,10 @@ class Budget:
         now = self.time_fn()
         self._trim(now)
         calls_h, usd_h, _ = self._window(now)
-        return {"usd_last_min": round(self.cost_last(60), 6), "calls_last_min": self.calls_last(60),
+        # usd_last_min is the running cost of live triage only (what "per minute" means on the Now
+        # screen); the engineer run is a one-off and is shown with the run on the Proposals screen.
+        return {"usd_last_min": round(self.cost_last(60, shared_only=True), 6),
+                "usd_last_min_all": round(self.cost_last(60), 6), "calls_last_min": self.calls_last(60),
                 "usd_last_hour": round(usd_h, 6), "calls_last_hour": calls_h,
                 "usd_cap_hour": float(self.caps.get("usd_per_hour_global", 0) or 0),
                 "totals": self.totals()}

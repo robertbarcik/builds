@@ -26,7 +26,7 @@ function desk() {
     copy: {
       inLabel: 'alerts came in', outLabel: 'need a human', outLabelOne: 'needs a human',
       passedLabel: 'got past the rules', filteredLabel: 'filtered by rules',
-      cost: (usd) => usd === null ? 'AI cost under $0.001 per minute' : `AI cost ≈ $${usd} per minute`,
+      cost: (usd) => usd === null ? 'Live triage AI cost under $0.001 per minute' : `Live triage AI cost ≈ $${usd} per minute`,
       degraded: 'AI paused, rule-based grouping',
       emptyBoard: 'Nothing needs a human right now.',
       cause: 'Likely cause', evidence: (n, t) => `Evidence: ${n} alert${n === 1 ? '' : 's'} from ${t} tool${t === 1 ? '' : 's'}`,
@@ -47,6 +47,8 @@ function desk() {
         replayingTitle: (d) => `Replaying the saved run from ${d || 'an earlier day'}`,
         elapsed: (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')} · usually under a minute`,
         savedChip: (d) => `Saved run from ${d || 'an earlier day'}`,
+        runCost: (usd) => `This run cost $${usd < 0.01 ? usd.toFixed(3) : usd.toFixed(2)} in AI calls, once.`,
+        savedCost: 'Replayed from the saved run: no AI calls, numbers recomputed now.',
         howItWorked: (n) => `How the AI worked (${n} steps)`,
         kind: { suppress: 'Noise', precursor: 'Early warning', retune: 'Threshold', correlate: 'Correlate' },
         accepted: 'Accepted, live now', rejected: 'Rejected',
@@ -585,6 +587,8 @@ function desk() {
       <div class="res-head">
         <span class="chip saved-chip" x-show="eng.mode === 'saved'" x-text="copy.eng.savedChip(eng.replay_date)"></span>
         <p class="res-sum" x-text="eng.summary"></p>
+        <p class="res-cost" x-show="eng.mode === 'saved' || eng.cost_usd != null"
+           x-text="eng.mode === 'saved' ? copy.eng.savedCost : copy.eng.runCost(Number(eng.cost_usd || 0))"></p>
         <div class="res-tools">
           <details class="wl-fold">
             <summary x-text="copy.eng.howItWorked(eng.log.length)"></summary>

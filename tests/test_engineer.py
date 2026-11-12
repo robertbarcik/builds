@@ -404,6 +404,8 @@ def test_good_run_streams_log_proposals_done_and_saves(hist, tmp_path):
     saved = json.loads((tmp_path / "saved_run.json").read_text())
     assert saved["date"] and len(saved["proposals"]) == 2 and saved["log"] and saved["tool_calls"] == 5
     assert "truth" not in json.dumps(saved)
+    # the run's one-off cost travels with the run (3 engineer turns + 2 drafts), not in "per minute"
+    assert svc.state_payload()["cost_usd"] == pytest.approx(3 * 0.003 + 2 * 0.0001, abs=1e-4)
 
 
 def test_tool_call_cap(hist, tmp_path):

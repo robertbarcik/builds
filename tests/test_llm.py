@@ -126,6 +126,32 @@ def test_budget_cost_last_minute_window():
     assert b.cost_last(60) == 0 and b.snapshot()["usd_last_hour"] == pytest.approx(first)
 
 
+def test_per_minute_cost_is_triage_only():
+    """The Now screen's "per minute" figure leaves out the one-off rule-engineer run."""
+    clk = Clock()
+    b = Budget(CFG, time_fn=clk)
+    b.record(b.reserve("triage"), 100_000, 0)                       # shared live triage
+    triage_usd = b.cost_last(60)
+    b.record(b.reserve("engineer", session="engineer"), 50_000, 5_000)
+    snap = b.snapshot()
+    assert snap["usd_last_min"] == pytest.approx(triage_usd, abs=1e-6)
+    assert snap["usd_last_min_all"] > snap["usd_last_min"]
+    assert snap["totals"]["cost_usd"] == pytest.approx(snap["usd_last_min_all"], abs=1e-6)
+
+
+def test_budget_day_cap():
+    clk = Clock()
+    b = Budget(_cfg(usd_per_day_global=0.05, usd_per_hour_global=100), time_fn=clk)
+    b.record(b.reserve("triage"), 100_000, 0)                       # $0.04
+    clk.t += 2 * 3600                                               # hour window has emptied
+    b.record(b.reserve("triage"), 30_000, 0)                        # $0.012, day total $0.052
+    with pytest.raises(BudgetRefused) as e:
+        b.reserve("triage")
+    assert e.value.reason == "usd_per_day_global" and e.value.retry_in_s > 0
+    clk.t += 24 * 3600                                              # the day slides
+    b.reserve("triage")
+
+
 # ---------------------------------------------------------------- client with a fake API
 
 def _resp(content, pt=100, ct=20, tool_calls=None):

@@ -160,6 +160,7 @@ class EngineerService:
         self.error: Optional[dict[str, Any]] = None
         self.saved_date: Optional[str] = None
         self.stats: dict[str, Any] = {}
+        self.spent_usd = 0.0              # what this live run has cost so far (model + drafts)
 
     def saved_info(self) -> Optional[dict[str, Any]]:
         try:
@@ -187,6 +188,8 @@ class EngineerService:
                 "max_s": self.max_s, "log": list(self.log), "summary": self.summary, "error": self.error,
                 "cooldown_s": round(self.cooldown_left(), 1), "saved_available": saved is not None,
                 "saved_date": (saved or {}).get("date"), "replay_date": self.saved_date,
+                # one-off cost of this run, shown next to it (a replayed saved run costs nothing)
+                "cost_usd": round(self.spent_usd, 4) if self.mode == "live" else None,
                 "pending": sum(1 for p in self.proposals if p.status == "proposed")}
 
     def proposal_payload(self, p: Proposal) -> dict[str, Any]:
@@ -404,7 +407,9 @@ class EngineerService:
                 if forced_turns == 1:
                     messages.append({"role": "user", "content": FORCE_SUBMIT_TEXT})
             turn = await self._call_model(messages, "auto", deadline)
-            cost += float(getattr(turn.usage, "cost_usd", 0.0) or 0.0)
+            turn_cost = float(getattr(turn.usage, "cost_usd", 0.0) or 0.0)
+            cost += turn_cost
+            self.spent_usd += turn_cost
             messages.append(turn.message)
             thought = clean_thought(turn.content) if turn.content else None
             if thought:
@@ -527,6 +532,7 @@ class EngineerService:
         for p, t in zip(survivors, tasks):
             draft, c = await t
             cost += c
+            self.spent_usd += c
             p.native_draft = draft
             self.proposals.append(p)
             self._publish("engineer_proposal", {"run_id": run_id, "proposal": self.proposal_payload(p)})
