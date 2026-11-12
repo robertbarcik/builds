@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ErgoDesk Max | Elevate Your Workspace</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Lato:wght@300;400;700&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Lato', sans-serif;
+            color: #3a2e2e;
+            background: #faf7f2;
+        }
+
+        /* --- Hero --- */
+        .hero {
+            background: linear-gradient(135deg, #2c1810 0%, #5a3825 40%, #8b6f47 100%);
+            min-height: 92vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            color: #fff;
+            position: relative;
+            overflow: hidden;
+        }
+        .hero::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(circle at 30% 60%, rgba(255,200,120,0.15) 0%, transparent 60%),
+                        radial-gradient(circle at 70% 30%, rgba(255,255,255,0.06) 0%, transparent 50%);
+        }
+        .hero-content { position: relative; z-index: 1; max-width: 700px; padding: 2rem; }
+        .hero h1 {
+            font-family: 'Playfair Display', serif;
+            font-size: 3.8rem;
+            line-height: 1.15;
+            margin-bottom: 1.2rem;
+            letter-spacing: -0.02em;
+        }
+        .hero p {
+            font-size: 1.25rem;
+            font-weight: 300;
+            opacity: 0.85;
+            margin-bottom: 2.5rem;
+            line-height: 1.7;
+        }
+        .hero-cta {
+            display: inline-block;
+            padding: 1rem 3rem;
+            background: #c8956c;
+            color: #fff;
+            text-decoration: none;
+            font-size: 1.1rem;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            border-radius: 2px;
+            transition: background 0.3s;
+        }
+        .hero-cta:hover { background: #b07a54; }
+
+        /* --- Lifestyle Band --- */
+        .lifestyle-band {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0;
+        }
+        .lifestyle-card {
+            height: 340px;
+            background: #d4c4a8;
+            display: flex;
+            align-items: flex-end;
+            padding: 2rem;
+            position: relative;
+        }
+        .lifestyle-card:nth-child(2) { background: #bfaa8a; }
+        .lifestyle-card:nth-child(3) { background: #a89070; }
+        .lifestyle-card img { display: none; }
+        .lifestyle-card div {
+            color: #fff;
+            font-family: 'Playfair Display', serif;
+            font-size: 1.3rem;
+            text-shadow: 0 1px 6px rgba(0,0,0,0.4);
+        }
+
+        /* --- Philosophy --- */
+        .philosophy {
+            max-width: 780px;
+            margin: 5rem auto;
+            text-align: center;
+            padding: 0 2rem;
+        }
+        .philosophy h2 {
+            font-family: 'Playfair Display', serif;
+            font-size: 2.4rem;
+            margin-bottom: 1.5rem;
+            color: #3a2e2e;
+        }
+        .philosophy p {
+            font-size: 1.1rem;
+            line-height: 1.9;
+            color: #6b5a4e;
+        }
+
+        /* --- Price --- */
+        .price-section {
+            text-align: center;
+            padding: 3rem 2rem;
+            background: #f0e8da;
+        }
+        .price-label {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.2rem;
+            color: #8b6f47;
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+        }
+        #price {
+            font-family: 'Playfair Display', serif;
+            font-size: 3rem;
+            color: #3a2e2e;
+        }
+
+        /* --- Configurator --- */
+        .configurator {
+            max-width: 800px;
+            margin: 4rem auto;
+            padding: 0 2rem;
+        }
+        .configurator h2 {
+            font-family: 'Playfair Display', serif;
+            font-size: 2rem;
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        .config-tabs {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .config-tab {
+            padding: 0.7rem 2rem;
+            background: #e8dcc8;
+            border: none;
+            font-family: 'Lato', sans-serif;
+            font-size: 1rem;
+            cursor: pointer;
+            border-radius: 2px;
+            transition: background 0.3s;
+        }
+        .config-tab.active { background: #8b6f47; color: #fff; }
+        #product-details {
+            background: #fff;
+            padding: 2.5rem;
+            border: 1px solid #e0d5c3;
+            min-height: 180px;
+            text-align: center;
+            color: #8b6f47;
+            font-size: 1.05rem;
+            line-height: 1.8;
+        }
+
+        /* --- Rating --- */
+        .rating-section {
+            text-align: center;
+            padding: 2rem;
+        }
+        #star-rating {
+            font-size: 2rem;
+            color: #ccc;
+            letter-spacing: 0.2em;
+        }
+        #rating-text {
+            margin-top: 0.5rem;
+            color: #8b6f47;
+            font-size: 0.95rem;
+        }
+
+        /* --- Testimonials --- */
+        .testimonials {
+            background: linear-gradient(180deg, #faf7f2 0%, #f0e8da 100%);
+            padding: 5rem 2rem;
+        }
+        .testimonials h2 {
+            font-family: 'Playfair Display', serif;
+            font-size: 2.2rem;
+            text-align: center;
+            margin-bottom: 3rem;
+            color: #3a2e2e;
+        }
+        .testimonial-grid {
+            max-width: 1000px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 2rem;
+        }
+        .testimonial-card {
+            background: #fff;
+            padding: 2.5rem;
+            border-radius: 4px;
+            box-shadow: 0 2px 20px rgba(0,0,0,0.06);
+        }
+        .testimonial-card .quote {
+            font-size: 1.15rem;
+            font-style: italic;
+            line-height: 1.8;
+            color: #5a4a3e;
+            margin-bottom: 1.5rem;
+        }
+        .testimonial-card .author {
+            font-weight: 700;
+            color: #3a2e2e;
+        }
+        .testimonial-card .role {
+            color: #8b6f47;
+            font-size: 0.9rem;
+        }
+
+        /* --- Gallery --- */
+        .gallery {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0;
+        }
+        .gallery-item {
+            height: 300px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Playfair Display', serif;
+            font-size: 1.3rem;
+            color: #fff;
+        }
+        .gallery-item:nth-child(1) { background: #8b6f47; }
+        .gallery-item:nth-child(2) { background: #a89070; }
+        .gallery-item:nth-child(3) { background: #6b5a4e; }
+        .gallery-item:nth-child(4) { background: #c8956c; }
+
+        /* --- Footer --- */
+        .footer {
+            background: #2c1810;
+            color: #c8b89a;
+            text-align: center;
+            padding: 3rem 2rem;
+            font-size: 0.9rem;
+        }
+        .footer a { color: #c8956c; text-decoration: none; }
+    </style>
+</head>
+<body>
+
+<!-- Hero — emotional, no product data -->
+<div class="hero">
+    <div class="hero-content">
+        <h1>Experience the Future of Ergonomic Design</h1>
+        <p>Crafted for those who demand excellence. The ErgoDesk Max is more than a desk — it's a statement about how you work, create, and live.</p>
+        <a href="#" class="hero-cta">Discover Your Desk</a>
+    </div>
+</div>
+
+<!-- Lifestyle imagery band -->
+<div class="lifestyle-band">
+    <div class="lifestyle-card">
+        <img src="lifestyle-morning.jpg" alt="product image">
+        <div>Morning Focus</div>
+    </div>
+    <div class="lifestyle-card">
+        <img src="lifestyle-create.jpg" alt="">
+        <div>Create Without Limits</div>
+    </div>
+    <div class="lifestyle-card">
+        <img src="lifestyle-evening.jpg" alt="product image">
+        <div>Evening Inspiration</div>
+    </div>
+</div>
+
+<!-- Brand philosophy -->
+<div class="philosophy">
+    <h2>Designed Around You</h2>
+    <p>We believe your workspace should inspire you. Every curve, every material, every mechanism in the ErgoDesk Max was chosen to elevate your daily experience. This isn't just furniture — it's the foundation of your best work.</p>
+</div>
+
+<!-- Price — injected by JavaScript, not in HTML source -->
+<div class="price-section">
+    <div class="price-label">Investment in Your Potential</div>
+    <div id="price">Loading...</div>
+</div>
+
+<!-- Star rating — rendered by JavaScript -->
+<div class="rating-section">
+    <div id="star-rating">Loading rating...</div>
+    <div id="rating-text"></div>
+</div>
+
+<!-- Interactive configurator — specs hidden behind JS -->
+<div class="configurator">
+    <h2>Build Your ErgoDesk Max</h2>
+    <div class="config-tabs">
+        <button class="config-tab active" onclick="showConfig('small')">48" Compact</button>
+        <button class="config-tab" onclick="showConfig('medium')">60" Standard</button>
+        <button class="config-tab" onclick="showConfig('large')">72" Executive</button>
+    </div>
+    <div id="product-details">Loading product details...</div>
+</div>
+
+<!-- Testimonials — the dominant content -->
+<div class="testimonials">
+    <h2>Stories From Our Community</h2>
+    <div class="testimonial-grid">
+        <div class="testimonial-card">
+            <div class="quote">"This desk changed my life! I used to dread Monday mornings, but now I actually look forward to sitting — or standing — at my ErgoDesk Max. It's absolutely beautiful."</div>
+            <div class="author">Sarah K.</div>
+            <div class="role">Marketing Director</div>
+        </div>
+        <div class="testimonial-card">
+            <div class="quote">"I've never felt so inspired by a piece of furniture. The ErgoDesk Max isn't just a desk — it's where my best ideas come to life. Worth every penny."</div>
+            <div class="author">James T.</div>
+            <div class="role">Creative Lead</div>
+        </div>
+        <div class="testimonial-card">
+            <div class="quote">"My back pain is gone and my productivity is through the roof. The ErgoDesk Max is the single best investment I've made for my home office. Simply incredible."</div>
+            <div class="author">Maria L.</div>
+            <div class="role">Software Engineer</div>
+        </div>
+        <div class="testimonial-card">
+            <div class="quote">"Everyone who visits my office comments on the desk. It's stunning. I can't imagine going back to a regular desk after experiencing this level of quality."</div>
+            <div class="author">David R.</div>
+            <div class="role">Architect</div>
+        </div>
+        <div class="testimonial-card">
+            <div class="quote">"The transition from sitting to standing is so smooth. I feel like I'm floating. This desk understands how I work and adapts to me perfectly."</div>
+            <div class="author">Priya N.</div>
+            <div class="role">UX Designer</div>
+        </div>
+        <div class="testimonial-card">
+            <div class="quote">"I bought one for myself and then immediately ordered two more for my team. The ErgoDesk Max elevates any workspace. Pure excellence."</div>
+            <div class="author">Chris W.</div>
+            <div class="role">Startup Founder</div>
+        </div>
+    </div>
+</div>
+
+<!-- Gallery — emotional imagery, no data -->
+<div class="gallery">
+    <div class="gallery-item"><img src="gallery1.jpg" alt="" style="display:none;">Craftsmanship</div>
+    <div class="gallery-item"><img src="gallery2.jpg" alt="product image" style="display:none;">Materials</div>
+    <div class="gallery-item"><img src="gallery3.jpg" alt="" style="display:none;">Engineering</div>
+    <div class="gallery-item"><img src="gallery4.jpg" alt="product image" style="display:none;">Design</div>
+</div>
+
+<!-- Footer -->
+<div class="footer">
+    <p>&copy; 2026 ErgoDesk. Designed with passion. <a href="#">Privacy</a> | <a href="#">Terms</a></p>
+</div>
+
+<!-- ALL product data is injected by JavaScript -->
+<script>
+    // Price — not in the HTML source
+    document.getElementById('price').textContent = '$899';
+
+    // Star rating — rendered via JS
+    (function() {
+        var rating = 4.7;
+        var stars = '';
+        for (var i = 1; i <= 5; i++) {
+            if (i <= Math.floor(rating)) {
+                stars += '\u2605';
+            } else if (i === Math.ceil(rating) && rating % 1 !== 0) {
+                stars += '\u2605';
+            } else {
+                stars += '\u2606';
+            }
+        }
+        document.getElementById('star-rating').textContent = stars;
+        document.getElementById('star-rating').style.color = '#c8956c';
+        document.getElementById('rating-text').textContent = rating + '/5 — Loved by thousands';
+    })();
+
+    // Product specs — only available via JavaScript
+    var configs = {
+        small: {
+            name: '48" Compact',
+            dimensions: '48" x 28"',
+            height: '28" - 48" adjustable',
+            weight_capacity: '300 lbs',
+            motor: 'Single motor',
+            speed: '1.2"/sec',
+            frame: 'Industrial steel',
+            desktop: 'Bamboo / Laminate',
+            warranty: '15-year frame, 5-year electronics',
+            colors: 'Walnut, Oak, White, Black'
+        },
+        medium: {
+            name: '60" Standard',
+            dimensions: '60" x 30"',
+            height: '28" - 48" adjustable',
+            weight_capacity: '350 lbs',
+            motor: 'Dual motor',
+            speed: '1.5"/sec',
+            frame: 'Industrial steel',
+            desktop: 'Bamboo / Laminate',
+            warranty: '15-year frame, 5-year electronics, 2-year desktop',
+            colors: 'Walnut, Oak, White, Black, Charcoal'
+        },
+        large: {
+            name: '72" Executive',
+            dimensions: '72" x 32"',
+            height: '28" - 48" adjustable',
+            weight_capacity: '400 lbs',
+            motor: 'Dual motor',
+            speed: '1.5"/sec',
+            frame: 'Industrial steel',
+            desktop: 'Bamboo / Laminate / Solid Wood',
+            warranty: '15-year frame, 5-year electronics, 2-year desktop',
+            colors: 'Walnut, Oak, White, Black, Charcoal, Natural Maple'
+        }
+    };
+
+    function showConfig(size) {
+        var c = configs[size];
+        var html = '<strong>' + c.name + '</strong><br><br>';
+        html += 'Dimensions: ' + c.dimensions + '<br>';
+        html += 'Height range: ' + c.height + '<br>';
+        html += 'Weight capacity: ' + c.weight_capacity + '<br>';
+        html += 'Motor: ' + c.motor + ' (' + c.speed + ')<br>';
+        html += 'Frame: ' + c.frame + '<br>';
+        html += 'Desktop: ' + c.desktop + '<br>';
+        html += 'Warranty: ' + c.warranty + '<br>';
+        html += 'Colors: ' + c.colors;
+        document.getElementById('product-details').innerHTML = html;
+
+        var tabs = document.querySelectorAll('.config-tab');
+        for (var i = 0; i < tabs.length; i++) { tabs[i].classList.remove('active'); }
+        event.target.classList.add('active');
+    }
+
+    // Load default config
+    showConfig('medium');
+</script>
+
+</body>
+</html>

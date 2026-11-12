@@ -1,0 +1,1414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Customers Workshop | barcik.training</title>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #f5f8fc;
+    --surface: #ffffff;
+    --border: #e2e8f0;
+    --text: #1a202c;
+    --text-secondary: #64748b;
+    --accent: #1e3a5f;
+    --accent-light: #e8edf4;
+    --green: #059669;
+    --green-bg: #ecfdf5;
+    --red: #dc2626;
+    --red-bg: #fef2f2;
+    --amber: #d97706;
+    --amber-bg: #fffbeb;
+    --radius: 8px;
+  }
+
+  body {
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  /* Header */
+  .header {
+    background: var(--accent);
+    color: #fff;
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .header-title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+  }
+  .header-subtitle {
+    font-size: 12px;
+    opacity: 0.7;
+    margin-left: auto;
+  }
+
+  /* Tab navigation */
+  .tabs {
+    display: flex;
+    background: var(--surface);
+    border-bottom: 2px solid var(--border);
+    padding: 0 24px;
+    overflow-x: auto;
+  }
+  .tab-btn {
+    padding: 12px 20px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    border: none;
+    background: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+    white-space: nowrap;
+    transition: all 0.2s;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+
+  /* Main content */
+  .content {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 24px;
+  }
+
+  /* Cards */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .card-title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: var(--accent);
+  }
+
+  /* Controls row */
+  .controls {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    margin-bottom: 20px;
+  }
+  .control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .control-group label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+  select, textarea {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    color: var(--text);
+    outline: none;
+  }
+  select:focus, textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-light);
+  }
+  textarea {
+    width: 100%;
+    resize: vertical;
+    min-height: 100px;
+  }
+
+  /* Buttons */
+  .btn {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 20px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(30,58,95,0.2);
+  }
+  .btn-primary:hover {
+    background: #2d5a8e;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px rgba(30,58,95,0.3);
+  }
+  .btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+  }
+  .btn-secondary {
+    background: var(--accent-light);
+    color: var(--accent);
+    border: 1px solid var(--border);
+  }
+  .btn-secondary:hover { background: #dce4ef; }
+  .btn-sm { padding: 4px 12px; font-size: 12px; }
+
+  /* Results grid */
+  .results-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
+  /* Score display */
+  .score-big {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 48px;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .score-label {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-secondary);
+  }
+
+  .verdict {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .verdict-friendly { background: var(--green-bg); color: var(--green); }
+  .verdict-hostile { background: var(--red-bg); color: var(--red); }
+  .verdict-mixed { background: var(--amber-bg); color: var(--amber); }
+
+  /* Score bar */
+  .score-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .score-bar-label {
+    font-size: 12px;
+    min-width: 140px;
+    color: var(--text-secondary);
+  }
+  .score-bar-track {
+    flex: 1;
+    height: 20px;
+    background: #f1f5f9;
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+  }
+  .score-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.5s ease;
+  }
+  .score-bar-value {
+    font-size: 13px;
+    font-weight: 600;
+    min-width: 36px;
+    text-align: right;
+  }
+
+  /* Collapsible sections */
+  .collapsible-header {
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--accent);
+    padding: 8px 0;
+    user-select: none;
+  }
+  .collapsible-header:hover { opacity: 0.8; }
+  .collapsible-arrow { transition: transform 0.2s; font-size: 10px; }
+  .collapsible-arrow.open { transform: rotate(90deg); }
+
+  /* Side-by-side vision view */
+  .vision-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    min-height: 500px;
+  }
+  .vision-panel {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .vision-panel-header {
+    background: var(--accent-light);
+    padding: 10px 16px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 600;
+    font-size: 13px;
+    border-bottom: 1px solid var(--border);
+  }
+  .vision-panel-body {
+    padding: 16px;
+    max-height: 600px;
+    overflow-y: auto;
+  }
+  .vision-iframe {
+    width: 100%;
+    min-height: 500px;
+    border: none;
+  }
+
+  /* Agent view sections */
+  .agent-section {
+    margin-bottom: 16px;
+  }
+  .agent-section-title {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-secondary);
+    font-weight: 600;
+    margin-bottom: 6px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+  }
+  .agent-text-content {
+    font-size: 12px;
+    white-space: pre-wrap;
+    background: #f8fafc;
+    padding: 12px;
+    border-radius: 4px;
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+  }
+  .heading-item {
+    padding: 2px 0;
+    font-size: 13px;
+  }
+  .heading-level {
+    display: inline-block;
+    width: 28px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent);
+  }
+
+  /* Stats row */
+  .stats-row {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 12px 0;
+  }
+  .stat {
+    background: var(--accent-light);
+    padding: 8px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+  }
+  .stat-value {
+    font-weight: 600;
+    color: var(--accent);
+  }
+
+  /* JSON-LD display */
+  .json-display {
+    font-size: 12px;
+    background: #1e293b;
+    color: #e2e8f0;
+    padding: 12px;
+    border-radius: 4px;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    max-height: 300px;
+    overflow-y: auto;
+  }
+
+  /* Model comparison grid */
+  .model-results {
+    display: grid;
+    gap: 16px;
+  }
+  .model-results.cols-2 { grid-template-columns: 1fr 1fr; }
+  .model-results.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+
+  /* Checkbox group for models */
+  .checkbox-group {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    transition: all 0.15s;
+  }
+  .checkbox-label:has(input:checked) {
+    border-color: var(--accent);
+    background: var(--accent-light);
+  }
+  .checkbox-label input { cursor: pointer; }
+
+  /* Audit scorecard */
+  .audit-grade {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 64px;
+    font-weight: 700;
+    text-align: center;
+    padding: 20px;
+  }
+
+  /* Summary box */
+  .summary-box {
+    background: var(--accent-light);
+    border-left: 4px solid var(--accent);
+    padding: 16px;
+    border-radius: 0 var(--radius) var(--radius) 0;
+    font-size: 14px;
+    line-height: 1.7;
+    margin-top: 16px;
+  }
+
+  /* Extracted / Missing lists */
+  .extract-list {
+    list-style: none;
+    padding: 0;
+  }
+  .extract-list li {
+    padding: 4px 0;
+    font-size: 13px;
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .extract-list li::before {
+    flex-shrink: 0;
+    font-size: 12px;
+  }
+  .extract-list.found li::before { content: "found:"; color: var(--green); font-weight: 600; }
+  .extract-list.missing li::before { content: "missing:"; color: var(--red); font-weight: 600; }
+
+  /* Loading spinner */
+  .spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .loading-overlay {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 60px 20px;
+    color: var(--text-secondary);
+    font-size: 14px;
+  }
+  .loading-overlay .spinner {
+    border-color: rgba(30,58,95,0.2);
+    border-top-color: var(--accent);
+    width: 24px;
+    height: 24px;
+  }
+
+  /* Error box */
+  .error-box {
+    background: var(--red-bg);
+    border: 1px solid #fecaca;
+    color: var(--red);
+    padding: 12px 16px;
+    border-radius: var(--radius);
+    font-size: 13px;
+  }
+
+  /* Prompt editor */
+  .prompt-editor {
+    background: #f8fafc;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .prompt-editor textarea {
+    font-size: 12px;
+    line-height: 1.6;
+    min-height: 200px;
+  }
+
+  /* Improvements list */
+  .improvements-list {
+    list-style: none;
+    padding: 0;
+    counter-reset: imp;
+  }
+  .improvements-list li {
+    counter-increment: imp;
+    padding: 8px 0;
+    font-size: 13px;
+    border-bottom: 1px solid var(--border);
+  }
+  .improvements-list li::before {
+    content: counter(imp) ".";
+    font-weight: 700;
+    color: var(--accent);
+    margin-right: 8px;
+  }
+
+  /* Responsive */
+  @media (max-width: 900px) {
+    .results-grid, .vision-grid, .model-results.cols-2, .model-results.cols-3 {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+</head>
+<body x-data="workshop()" x-init="init()">
+
+<!-- Header -->
+<div class="header">
+  <div class="header-title">Is Your Website Ready for AI Customers?</div>
+  <div class="header-subtitle">barcik.training</div>
+</div>
+
+<!-- Tabs -->
+<div class="tabs">
+  <button class="tab-btn" :class="{ active: tab === 'comparison' }" @click="tab = 'comparison'">Agent Comparison</button>
+  <button class="tab-btn" :class="{ active: tab === 'vision' }" @click="tab = 'vision'">Agent Vision</button>
+  <button class="tab-btn" :class="{ active: tab === 'models' }" @click="tab = 'models'">Model Comparison</button>
+  <button class="tab-btn" :class="{ active: tab === 'audit' }" @click="tab = 'audit'">Audit Tool</button>
+</div>
+
+<div class="content">
+
+<!-- ==================== TAB 1: AGENT COMPARISON ==================== -->
+<div x-show="tab === 'comparison'" x-cloak>
+
+  <!-- Controls -->
+  <div class="card">
+    <div class="controls">
+      <div class="control-group">
+        <label>Agent Persona</label>
+        <select x-model="comp.agent" @change="loadPrompt()">
+          <option value="vendor_scout">VendorScout (Procurement)</option>
+          <option value="stack_picker">StackPicker (Developer)</option>
+          <option value="deal_finder">DealFinder (Shopping)</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label>Website Pair</label>
+        <select x-model="comp.pairId">
+          <template x-for="pair in examples">
+            <option :value="pair.id" x-text="pair.name"></option>
+          </template>
+        </select>
+      </div>
+      <div class="control-group">
+        <label>LLM Model</label>
+        <select x-model="comp.model">
+          <template x-for="m in models">
+            <option :value="m.id" x-text="m.name + ' (' + m.provider + ')'"></option>
+          </template>
+        </select>
+      </div>
+      <button class="btn btn-primary" @click="runComparison()" :disabled="comp.loading">
+        <template x-if="comp.loading"><span class="spinner"></span></template>
+        <span x-text="comp.loading ? 'Evaluating...' : 'Run Evaluation'"></span>
+      </button>
+    </div>
+
+    <!-- Prompt editor toggle -->
+    <div>
+      <div class="collapsible-header" @click="comp.showPrompt = !comp.showPrompt">
+        <span class="collapsible-arrow" :class="{ open: comp.showPrompt }">&#9654;</span>
+        View / Edit System Prompt
+      </div>
+      <div x-show="comp.showPrompt" x-collapse>
+        <div class="prompt-editor">
+          <textarea x-model="comp.promptText" rows="12"></textarea>
+          <div style="margin-top: 8px; display: flex; gap: 8px;">
+            <button class="btn btn-sm btn-secondary" @click="savePrompt()">Save Changes</button>
+            <button class="btn btn-sm btn-secondary" @click="loadPrompt()">Reset</button>
+            <span x-show="comp.promptSaved" x-transition style="font-size: 12px; color: var(--green); padding: 4px 8px;">Saved!</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Error -->
+  <div x-show="comp.error" class="error-box" x-text="comp.error" style="margin-bottom: 16px;"></div>
+
+  <!-- Loading -->
+  <div x-show="comp.loading" class="card">
+    <div class="loading-overlay">
+      <div class="spinner"></div>
+      <span x-text="agentName(comp.agent) + ' is evaluating both websites...'"></span>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div x-show="comp.result && !comp.loading">
+    <template x-if="comp.result">
+      <div>
+        <!-- Summary -->
+        <div class="summary-box" x-show="comp.result.comparison_summary" x-text="comp.result.comparison_summary"></div>
+
+        <div style="height: 16px;"></div>
+
+        <!-- Side by side -->
+        <div class="results-grid">
+          <!-- Site A -->
+          <div class="card">
+            <div class="card-title" x-text="comp.result.pair?.site_a?.label || 'Site A'"></div>
+            <div style="display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px;">
+              <div class="score-big" :style="'color:' + scoreColor(comp.result.site_a?.score)" x-text="comp.result.site_a?.score ?? '?'"></div>
+              <div class="score-label">/100</div>
+              <span class="verdict" :class="verdictClass(comp.result.site_a?.verdict)" x-text="comp.result.site_a?.verdict"></span>
+            </div>
+
+            <!-- Findings bars -->
+            <template x-if="comp.result.site_a?.findings">
+              <div>
+                <template x-for="f in comp.result.site_a.findings">
+                  <div class="score-bar">
+                    <span class="score-bar-label" x-text="f.category"></span>
+                    <div class="score-bar-track">
+                      <div class="score-bar-fill" :style="'width:' + (f.score*10) + '%;background:' + scoreColor(f.score*10)"></div>
+                    </div>
+                    <span class="score-bar-value" x-text="f.score + '/10'"></span>
+                  </div>
+                </template>
+              </div>
+            </template>
+
+            <!-- Extracted info -->
+            <template x-if="comp.result.site_a?.extracted">
+              <div style="margin-top: 12px;">
+                <div class="collapsible-header" @click="comp.showExtractedA = !comp.showExtractedA">
+                  <span class="collapsible-arrow" :class="{ open: comp.showExtractedA }">&#9654;</span>
+                  Extracted Information
+                </div>
+                <div x-show="comp.showExtractedA">
+                  <div class="agent-text-content" x-text="JSON.stringify(comp.result.site_a.extracted, null, 2)"></div>
+                </div>
+              </div>
+            </template>
+
+            <!-- Missing info -->
+            <template x-if="comp.result.site_a?.missing?.length">
+              <div style="margin-top: 8px;">
+                <div class="collapsible-header" @click="comp.showMissingA = !comp.showMissingA">
+                  <span class="collapsible-arrow" :class="{ open: comp.showMissingA }">&#9654;</span>
+                  Missing / Inaccessible (<span x-text="comp.result.site_a.missing.length"></span>)
+                </div>
+                <div x-show="comp.showMissingA">
+                  <ul class="extract-list missing">
+                    <template x-for="item in comp.result.site_a.missing">
+                      <li x-text="item"></li>
+                    </template>
+                  </ul>
+                </div>
+              </div>
+            </template>
+
+            <!-- Reasoning -->
+            <template x-if="comp.result.site_a?.reasoning">
+              <div style="margin-top: 8px;">
+                <div class="collapsible-header" @click="comp.showReasoningA = !comp.showReasoningA">
+                  <span class="collapsible-arrow" :class="{ open: comp.showReasoningA }">&#9654;</span>
+                  Full Analysis
+                </div>
+                <div x-show="comp.showReasoningA">
+                  <div class="agent-text-content" x-text="comp.result.site_a.reasoning"></div>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <!-- Site B -->
+          <div class="card">
+            <div class="card-title" x-text="comp.result.pair?.site_b?.label || 'Site B'"></div>
+            <div style="display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px;">
+              <div class="score-big" :style="'color:' + scoreColor(comp.result.site_b?.score)" x-text="comp.result.site_b?.score ?? '?'"></div>
+              <div class="score-label">/100</div>
+              <span class="verdict" :class="verdictClass(comp.result.site_b?.verdict)" x-text="comp.result.site_b?.verdict"></span>
+            </div>
+
+            <template x-if="comp.result.site_b?.findings">
+              <div>
+                <template x-for="f in comp.result.site_b.findings">
+                  <div class="score-bar">
+                    <span class="score-bar-label" x-text="f.category"></span>
+                    <div class="score-bar-track">
+                      <div class="score-bar-fill" :style="'width:' + (f.score*10) + '%;background:' + scoreColor(f.score*10)"></div>
+                    </div>
+                    <span class="score-bar-value" x-text="f.score + '/10'"></span>
+                  </div>
+                </template>
+              </div>
+            </template>
+
+            <template x-if="comp.result.site_b?.extracted">
+              <div style="margin-top: 12px;">
+                <div class="collapsible-header" @click="comp.showExtractedB = !comp.showExtractedB">
+                  <span class="collapsible-arrow" :class="{ open: comp.showExtractedB }">&#9654;</span>
+                  Extracted Information
+                </div>
+                <div x-show="comp.showExtractedB">
+                  <div class="agent-text-content" x-text="JSON.stringify(comp.result.site_b.extracted, null, 2)"></div>
+                </div>
+              </div>
+            </template>
+
+            <template x-if="comp.result.site_b?.missing?.length">
+              <div style="margin-top: 8px;">
+                <div class="collapsible-header" @click="comp.showMissingB = !comp.showMissingB">
+                  <span class="collapsible-arrow" :class="{ open: comp.showMissingB }">&#9654;</span>
+                  Missing / Inaccessible (<span x-text="comp.result.site_b.missing.length"></span>)
+                </div>
+                <div x-show="comp.showMissingB">
+                  <ul class="extract-list missing">
+                    <template x-for="item in comp.result.site_b.missing">
+                      <li x-text="item"></li>
+                    </template>
+                  </ul>
+                </div>
+              </div>
+            </template>
+
+            <template x-if="comp.result.site_b?.reasoning">
+              <div style="margin-top: 8px;">
+                <div class="collapsible-header" @click="comp.showReasoningB = !comp.showReasoningB">
+                  <span class="collapsible-arrow" :class="{ open: comp.showReasoningB }">&#9654;</span>
+                  Full Analysis
+                </div>
+                <div x-show="comp.showReasoningB">
+                  <div class="agent-text-content" x-text="comp.result.site_b.reasoning"></div>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+    </template>
+  </div>
+</div>
+
+<!-- ==================== TAB 2: AGENT VISION ==================== -->
+<div x-show="tab === 'vision'" x-cloak>
+
+  <div class="card">
+    <div class="controls">
+      <div class="control-group">
+        <label>Load Example</label>
+        <select x-model="vision.selectedFile" @change="loadVisionExample()">
+          <option value="">-- Select --</option>
+          <template x-for="pair in examples">
+            <optgroup :label="pair.name">
+              <option :value="pair.site_a.file" x-text="pair.site_a.label"></option>
+              <option :value="pair.site_b.file" x-text="pair.site_b.label"></option>
+            </optgroup>
+          </template>
+        </select>
+      </div>
+      <button class="btn btn-secondary btn-sm" @click="vision.showPaste = !vision.showPaste">
+        Or Paste HTML
+      </button>
+      <button class="btn btn-primary" @click="runVision()" :disabled="vision.loading || (!vision.html)">
+        <template x-if="vision.loading"><span class="spinner"></span></template>
+        Analyze
+      </button>
+    </div>
+
+    <div x-show="vision.showPaste" style="margin-top: 8px;">
+      <textarea x-model="vision.pastedHtml" placeholder="Paste HTML source here..." rows="6"></textarea>
+    </div>
+  </div>
+
+  <div x-show="vision.error" class="error-box" x-text="vision.error" style="margin-bottom: 16px;"></div>
+
+  <div x-show="vision.loading" class="card">
+    <div class="loading-overlay">
+      <div class="spinner"></div>
+      Analyzing HTML structure...
+    </div>
+  </div>
+
+  <div x-show="vision.result && !vision.loading">
+    <!-- Stats row -->
+    <div x-show="vision.result">
+        <div class="stats-row" style="padding: 0 0 16px;">
+          <div class="stat"><span class="stat-value" x-text="vision.result.stats?.total_elements"></span> elements</div>
+          <div class="stat">Text ratio: <span class="stat-value" x-text="((vision.result.stats?.text_to_html_ratio || 0) * 100).toFixed(1) + '%'"></span></div>
+          <div class="stat">Semantic score: <span class="stat-value" x-text="(vision.result.stats?.semantic_html_score || 0) + '/10'"></span></div>
+          <div class="stat" :style="vision.result.stats?.structured_data_found ? 'background: var(--green-bg)' : 'background: var(--red-bg)'">
+            Structured data: <span class="stat-value" x-text="vision.result.stats?.structured_data_found ? 'Yes' : 'None'"></span>
+          </div>
+          <div class="stat" :style="vision.result.stats?.js_dependent_count > 0 ? 'background: var(--amber-bg)' : 'background: var(--green-bg)'">
+            JS-dependent: <span class="stat-value" x-text="vision.result.stats?.js_dependent_count || 0"></span>
+          </div>
+        </div>
+
+        <!-- Side by side -->
+        <div class="vision-grid">
+          <!-- Human view -->
+          <div class="vision-panel">
+            <div class="vision-panel-header">Human View (rendered HTML)</div>
+            <iframe class="vision-iframe" :srcdoc="vision.html" sandbox="allow-same-origin"></iframe>
+          </div>
+
+          <!-- Agent view -->
+          <div class="vision-panel">
+            <div class="vision-panel-header">Agent View (what a crawler sees)</div>
+            <div class="vision-panel-body">
+
+              <!-- Headings -->
+              <div class="agent-section">
+                <div class="agent-section-title">Heading Hierarchy (<span x-text="vision.result.agent_view?.headings?.length || 0"></span>)</div>
+                <template x-if="vision.result.agent_view?.headings?.length">
+                  <div>
+                    <template x-for="h in vision.result.agent_view.headings">
+                      <div class="heading-item" :style="'padding-left:' + ((h.level - 1) * 16) + 'px'">
+                        <span class="heading-level" x-text="'H' + h.level"></span>
+                        <span x-text="h.text"></span>
+                      </div>
+                    </template>
+                  </div>
+                </template>
+                <template x-if="!vision.result.agent_view?.headings?.length">
+                  <div style="font-size: 12px; color: var(--red);">No headings found</div>
+                </template>
+              </div>
+
+              <!-- Structured Data -->
+              <div class="agent-section">
+                <div class="agent-section-title">Structured Data (<span x-text="vision.result.agent_view?.structured_data?.length || 0"></span>)</div>
+                <template x-if="vision.result.agent_view?.structured_data?.length">
+                  <div>
+                    <template x-for="sd in vision.result.agent_view.structured_data">
+                      <div style="margin-bottom: 8px;">
+                        <div style="font-size: 11px; font-weight: 600; color: var(--green); margin-bottom: 4px;" x-text="sd.type"></div>
+                        <div class="json-display" x-text="JSON.stringify(sd.data, null, 2)"></div>
+                      </div>
+                    </template>
+                  </div>
+                </template>
+                <template x-if="!vision.result.agent_view?.structured_data?.length">
+                  <div style="font-size: 12px; color: var(--red);">No structured data found</div>
+                </template>
+              </div>
+
+              <!-- Meta tags -->
+              <div class="agent-section">
+                <div class="agent-section-title">Metadata</div>
+                <template x-if="Object.keys(vision.result.agent_view?.meta || {}).length">
+                  <div>
+                    <template x-for="key in Object.keys(vision.result.agent_view.meta)">
+                      <div style="font-size: 12px; margin-bottom: 4px;">
+                        <span style="font-weight: 600; color: var(--accent);" x-text="key + ':'"></span>
+                        <span x-text="vision.result.agent_view.meta[key]"></span>
+                      </div>
+                    </template>
+                  </div>
+                </template>
+              </div>
+
+              <!-- JS-dependent elements -->
+              <div class="agent-section" x-show="vision.result.agent_view?.js_dependent_elements?.length">
+                <div class="agent-section-title" style="color: var(--amber);">JS-Dependent Elements (<span x-text="vision.result.agent_view?.js_dependent_elements?.length || 0"></span>)</div>
+                <template x-for="el in vision.result.agent_view.js_dependent_elements">
+                  <div style="font-size: 12px; padding: 6px 8px; background: var(--amber-bg); border-radius: 4px; margin-bottom: 4px;">
+                    <div style="font-weight: 500;" x-text="el.element"></div>
+                    <div style="color: var(--text-secondary);" x-text="el.reason"></div>
+                  </div>
+                </template>
+              </div>
+
+              <!-- Semantic elements -->
+              <div class="agent-section">
+                <div class="agent-section-title">Semantic HTML Elements</div>
+                <template x-if="Object.keys(vision.result.agent_view?.semantic_elements || {}).length">
+                  <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                    <template x-for="tag in Object.keys(vision.result.agent_view.semantic_elements)">
+                      <span class="stat" style="padding: 4px 10px; font-size: 11px;">
+                        &lt;<span x-text="tag"></span>&gt; x<span class="stat-value" x-text="vision.result.agent_view.semantic_elements[tag]"></span>
+                      </span>
+                    </template>
+                  </div>
+                </template>
+                <template x-if="!Object.keys(vision.result.agent_view?.semantic_elements || {}).length">
+                  <div style="font-size: 12px; color: var(--red);">No semantic HTML5 elements found (all divs/spans)</div>
+                </template>
+              </div>
+
+              <!-- Images -->
+              <div class="agent-section">
+                <div class="agent-section-title">Images (<span x-text="vision.result.stats?.images_with_alt || 0"></span>/<span x-text="vision.result.stats?.image_count || 0"></span> with alt text)</div>
+                <template x-if="vision.result.agent_view?.images?.length">
+                  <div>
+                    <template x-for="img in vision.result.agent_view.images">
+                      <div style="font-size: 12px; margin-bottom: 4px;">
+                        <span :style="img.has_alt ? 'color: var(--green)' : 'color: var(--red)'" x-text="img.has_alt ? '[alt]' : '[no alt]'"></span>
+                        <span x-text="img.alt || img.src.split('/').pop() || '(unknown)'"></span>
+                      </div>
+                    </template>
+                  </div>
+                </template>
+              </div>
+
+              <!-- Visible text preview -->
+              <div class="agent-section">
+                <div class="collapsible-header" @click="vision.showText = !vision.showText">
+                  <span class="collapsible-arrow" :class="{ open: vision.showText }">&#9654;</span>
+                  Raw Visible Text (<span x-text="vision.result.stats?.text_length || 0"></span> chars)
+                </div>
+                <div x-show="vision.showText">
+                  <div class="agent-text-content" x-text="vision.result.agent_view?.text_content"></div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== TAB 3: MODEL COMPARISON ==================== -->
+<div x-show="tab === 'models'" x-cloak>
+
+  <div class="card">
+    <div class="controls">
+      <div class="control-group">
+        <label>Agent Persona</label>
+        <select x-model="modelComp.agent">
+          <option value="vendor_scout">VendorScout (Procurement)</option>
+          <option value="stack_picker">StackPicker (Developer)</option>
+          <option value="deal_finder">DealFinder (Shopping)</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label>Website Pair</label>
+        <select x-model="modelComp.pairId">
+          <template x-for="pair in examples">
+            <option :value="pair.id" x-text="pair.name"></option>
+          </template>
+        </select>
+      </div>
+    </div>
+
+    <div class="control-group" style="margin-bottom: 12px;">
+      <label>Select Models (2-3 recommended)</label>
+      <div class="checkbox-group">
+        <template x-for="m in models">
+          <label class="checkbox-label">
+            <input type="checkbox" :value="m.id" x-model="modelComp.selectedModels">
+            <span x-text="m.name"></span>
+          </label>
+        </template>
+      </div>
+    </div>
+
+    <button class="btn btn-primary" @click="runModelComparison()" :disabled="modelComp.loading || modelComp.selectedModels.length < 2">
+      <template x-if="modelComp.loading"><span class="spinner"></span></template>
+      <span x-text="modelComp.loading ? 'Evaluating ' + modelComp.selectedModels.length + ' models...' : 'Run All Models'"></span>
+    </button>
+  </div>
+
+  <div x-show="modelComp.error" class="error-box" x-text="modelComp.error" style="margin-bottom: 16px;"></div>
+
+  <div x-show="modelComp.loading" class="card">
+    <div class="loading-overlay">
+      <div class="spinner"></div>
+      <span>Running evaluation across <span x-text="modelComp.selectedModels.length"></span> models in parallel...</span>
+    </div>
+  </div>
+
+  <!-- Model comparison results -->
+  <div x-show="Object.keys(modelComp.results).length > 0 && !modelComp.loading"
+       class="model-results" :class="'cols-' + Math.min(Object.keys(modelComp.results).length, 3)">
+    <template x-for="modelId in Object.keys(modelComp.results)">
+      <div class="card">
+        <div class="card-title" x-text="modelName(modelId)"></div>
+
+        <template x-if="modelComp.results[modelId].error">
+          <div class="error-box" x-text="modelComp.results[modelId].error"></div>
+        </template>
+
+        <template x-if="!modelComp.results[modelId].error">
+          <div>
+            <!-- Site A score -->
+            <div style="margin-bottom: 12px;">
+              <div style="font-size: 12px; color: var(--text-secondary);" x-text="modelComp.results[modelId].pair?.site_a?.label || 'Site A'"></div>
+              <div style="display: flex; align-items: baseline; gap: 8px;">
+                <span style="font-family: 'Space Grotesk'; font-size: 28px; font-weight: 700;"
+                      :style="'color:' + scoreColor(modelComp.results[modelId].site_a?.score)"
+                      x-text="modelComp.results[modelId].site_a?.score ?? '?'"></span>
+                <span class="verdict" :class="verdictClass(modelComp.results[modelId].site_a?.verdict)"
+                      x-text="modelComp.results[modelId].site_a?.verdict"></span>
+              </div>
+            </div>
+            <!-- Site B score -->
+            <div style="margin-bottom: 12px;">
+              <div style="font-size: 12px; color: var(--text-secondary);" x-text="modelComp.results[modelId].pair?.site_b?.label || 'Site B'"></div>
+              <div style="display: flex; align-items: baseline; gap: 8px;">
+                <span style="font-family: 'Space Grotesk'; font-size: 28px; font-weight: 700;"
+                      :style="'color:' + scoreColor(modelComp.results[modelId].site_b?.score)"
+                      x-text="modelComp.results[modelId].site_b?.score ?? '?'"></span>
+                <span class="verdict" :class="verdictClass(modelComp.results[modelId].site_b?.verdict)"
+                      x-text="modelComp.results[modelId].site_b?.verdict"></span>
+              </div>
+            </div>
+            <!-- Summary -->
+            <div x-show="modelComp.results[modelId].comparison_summary" class="summary-box" style="font-size: 12px;"
+                 x-text="modelComp.results[modelId].comparison_summary"></div>
+          </div>
+        </template>
+      </div>
+    </template>
+  </div>
+</div>
+
+<!-- ==================== TAB 4: AUDIT TOOL ==================== -->
+<div x-show="tab === 'audit'" x-cloak>
+
+  <div class="card">
+    <div class="card-title">Agent Readiness Audit</div>
+    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">
+      Paste your website's HTML source below, or load an example to see how the audit works.
+    </p>
+
+    <div style="margin-bottom: 12px; display: flex; gap: 8px; flex-wrap: wrap;">
+      <template x-for="pair in examples">
+        <template x-for="site in [pair.site_a, pair.site_b]">
+          <button class="btn btn-sm btn-secondary" @click="loadAuditExample(site.file)" x-text="site.label"></button>
+        </template>
+      </template>
+    </div>
+
+    <textarea x-model="audit.html" placeholder="Paste HTML source here..." rows="8" style="margin-bottom: 12px;"></textarea>
+
+    <div class="controls">
+      <div class="control-group">
+        <label>LLM Model</label>
+        <select x-model="audit.model">
+          <template x-for="m in models">
+            <option :value="m.id" x-text="m.name + ' (' + m.provider + ')'"></option>
+          </template>
+        </select>
+      </div>
+      <button class="btn btn-primary" @click="runAudit()" :disabled="audit.loading || !audit.html">
+        <template x-if="audit.loading"><span class="spinner"></span></template>
+        <span x-text="audit.loading ? 'Analyzing...' : 'Run Audit'"></span>
+      </button>
+    </div>
+  </div>
+
+  <div x-show="audit.error" class="error-box" x-text="audit.error" style="margin-bottom: 16px;"></div>
+
+  <div x-show="audit.loading" class="card">
+    <div class="loading-overlay">
+      <div class="spinner"></div>
+      Auditing website for AI agent readiness...
+    </div>
+  </div>
+
+  <!-- Audit results -->
+  <div x-show="audit.result && !audit.loading">
+    <div x-show="audit.result">
+      <div class="results-grid">
+        <!-- Score overview -->
+        <div class="card" style="text-align: center;">
+          <div class="audit-grade" :style="'color:' + scoreColor(audit.result?.audit?.overall_score)" x-text="audit.result?.audit?.grade || '?'"></div>
+          <div class="score-big" :style="'color:' + scoreColor(audit.result?.audit?.overall_score)">
+            <span x-text="audit.result?.audit?.overall_score ?? '?'"></span><span style="font-size: 24px; color: var(--text-secondary);">/100</span>
+          </div>
+          <div class="score-label" style="margin-top: 8px;">Overall Agent Readiness</div>
+        </div>
+
+        <!-- Top improvements -->
+        <div class="card">
+          <div class="card-title">Top Improvements</div>
+          <ol class="improvements-list" x-show="audit.result?.audit?.top_3_improvements?.length">
+            <template x-for="imp in (audit.result?.audit?.top_3_improvements || [])">
+              <li x-text="imp"></li>
+            </template>
+          </ol>
+        </div>
+      </div>
+
+      <!-- Category scores -->
+      <div class="card" x-show="audit.result?.audit?.categories?.length">
+        <div class="card-title">Category Breakdown</div>
+        <template x-for="cat in (audit.result?.audit?.categories || [])">
+          <div style="margin-bottom: 16px;">
+            <div class="score-bar">
+              <span class="score-bar-label" x-text="cat.name"></span>
+              <div class="score-bar-track">
+                <div class="score-bar-fill" :style="'width:' + (cat.score*10) + '%;background:' + scoreColor(cat.score*10)"></div>
+              </div>
+              <span class="score-bar-value" x-text="cat.score + '/10'"></span>
+            </div>
+            <div style="font-size: 12px; color: var(--text-secondary); padding-left: 148px;" x-text="cat.detail"></div>
+            <div x-show="cat.suggestions?.length" style="padding-left: 148px; margin-top: 4px;">
+              <template x-for="s in (cat.suggestions || [])">
+                <div style="font-size: 12px; color: var(--accent); padding: 2px 0;">
+                  &rarr; <span x-text="s"></span>
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /content -->
+
+<script>
+function workshop() {
+  return {
+    tab: 'comparison',
+    models: [],
+    examples: [],
+
+    // Agent Comparison
+    comp: {
+      agent: 'vendor_scout',
+      pairId: 'cloudsync',
+      model: '',
+      promptText: '',
+      showPrompt: false,
+      promptSaved: false,
+      loading: false,
+      error: '',
+      result: null,
+      showExtractedA: false,
+      showExtractedB: false,
+      showMissingA: false,
+      showMissingB: false,
+      showReasoningA: false,
+      showReasoningB: false,
+    },
+
+    // Agent Vision
+    vision: {
+      selectedFile: '',
+      html: '',
+      pastedHtml: '',
+      showPaste: false,
+      showText: false,
+      loading: false,
+      error: '',
+      result: null,
+    },
+
+    // Model Comparison
+    modelComp: {
+      agent: 'vendor_scout',
+      pairId: 'cloudsync',
+      selectedModels: [],
+      loading: false,
+      error: '',
+      results: {},
+    },
+
+    // Audit
+    audit: {
+      html: '',
+      model: '',
+      loading: false,
+      error: '',
+      result: null,
+    },
+
+    async init() {
+      // Load models
+      try {
+        const resp = await fetch('/api/models');
+        const data = await resp.json();
+        this.models = data.models;
+        const defaultModel = data.default || data.models[0]?.id;
+        this.comp.model = defaultModel;
+        this.audit.model = defaultModel;
+        // Default select first 2 models for model comparison
+        this.modelComp.selectedModels = data.models.slice(0, 2).map(m => m.id);
+      } catch (e) {
+        console.error('Failed to load models:', e);
+      }
+
+      // Load examples
+      try {
+        const resp = await fetch('/api/examples');
+        const data = await resp.json();
+        this.examples = data.pairs;
+      } catch (e) {
+        console.error('Failed to load examples:', e);
+      }
+
+      // Load initial prompt
+      this.loadPrompt();
+    },
+
+    // --- Helpers ---
+    agentName(id) {
+      const names = { vendor_scout: 'VendorScout', stack_picker: 'StackPicker', deal_finder: 'DealFinder' };
+      return names[id] || id;
+    },
+
+    modelName(id) {
+      const m = this.models.find(m => m.id === id);
+      return m ? m.name : id;
+    },
+
+    scoreColor(score) {
+      if (score == null) return 'var(--text-secondary)';
+      if (score >= 70) return 'var(--green)';
+      if (score >= 40) return 'var(--amber)';
+      return 'var(--red)';
+    },
+
+    verdictClass(verdict) {
+      if (!verdict) return '';
+      const v = verdict.toLowerCase();
+      if (v.includes('friendly')) return 'verdict-friendly';
+      if (v.includes('hostile')) return 'verdict-hostile';
+      return 'verdict-mixed';
+    },
+
+    // --- Agent Comparison ---
+    async loadPrompt() {
+      try {
+        const resp = await fetch(`/api/prompts/${this.comp.agent}`);
+        const data = await resp.json();
+        this.comp.promptText = data.prompt;
+      } catch (e) {
+        console.error('Failed to load prompt:', e);
+      }
+    },
+
+    async savePrompt() {
+      try {
+        await fetch(`/api/prompts/${this.comp.agent}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: this.comp.promptText }),
+        });
+        this.comp.promptSaved = true;
+        setTimeout(() => this.comp.promptSaved = false, 2000);
+      } catch (e) {
+        console.error('Failed to save prompt:', e);
+      }
+    },
+
+    async runComparison() {
+      this.comp.loading = true;
+      this.comp.error = '';
+      this.comp.result = null;
+      this.comp.showExtractedA = false;
+      this.comp.showExtractedB = false;
+      this.comp.showMissingA = false;
+      this.comp.showMissingB = false;
+      this.comp.showReasoningA = false;
+      this.comp.showReasoningB = false;
+
+      try {
+        const resp = await fetch('/api/evaluate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            agent: this.comp.agent,
+            pair_id: this.comp.pairId,
+            model: this.comp.model,
+            system_prompt_override: this.comp.showPrompt ? this.comp.promptText : null,
+          }),
+        });
+        if (!resp.ok) {
+          const err = await resp.json();
+          throw new Error(err.detail || 'Evaluation failed');
+        }
+        this.comp.result = await resp.json();
+      } catch (e) {
+        this.comp.error = e.message;
+      } finally {
+        this.comp.loading = false;
+      }
+    },
+
+    // --- Agent Vision ---
+    async loadVisionExample() {
+      if (!this.vision.selectedFile) return;
+      try {
+        const resp = await fetch(`/api/examples/${this.vision.selectedFile}`);
+        this.vision.html = await resp.text();
+        this.vision.result = null;
+      } catch (e) {
+        this.vision.error = e.message;
+      }
+    },
+
+    async runVision() {
+      const html = this.vision.showPaste && this.vision.pastedHtml ? this.vision.pastedHtml : this.vision.html;
+      if (!html) return;
+
+      this.vision.loading = true;
+      this.vision.error = '';
+      this.vision.result = null;
+      this.vision.html = html;
+
+      try {
+        const resp = await fetch('/api/vision', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ html }),
+        });
+        if (!resp.ok) throw new Error('Vision analysis failed');
+        this.vision.result = await resp.json();
+      } catch (e) {
+        this.vision.error = e.message;
+      } finally {
+        this.vision.loading = false;
+      }
+    },
+
+    // --- Model Comparison ---
+    async runModelComparison() {
+      if (this.modelComp.selectedModels.length < 2) return;
+
+      this.modelComp.loading = true;
+      this.modelComp.error = '';
+      this.modelComp.results = {};
+
+      try {
+        const promises = this.modelComp.selectedModels.map(async (modelId) => {
+          try {
+            const resp = await fetch('/api/evaluate', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                agent: this.modelComp.agent,
+                pair_id: this.modelComp.pairId,
+                model: modelId,
+              }),
+            });
+            if (!resp.ok) {
+              const err = await resp.json();
+              return { modelId, error: err.detail || 'Failed' };
+            }
+            const data = await resp.json();
+            return { modelId, ...data };
+          } catch (e) {
+            return { modelId, error: e.message };
+          }
+        });
+
+        const results = await Promise.all(promises);
+        const resultMap = {};
+        for (const r of results) {
+          resultMap[r.modelId] = r;
+        }
+        this.modelComp.results = resultMap;
+      } catch (e) {
+        this.modelComp.error = e.message;
+      } finally {
+        this.modelComp.loading = false;
+      }
+    },
+
+    // --- Audit ---
+    async loadAuditExample(filename) {
+      try {
+        const resp = await fetch(`/api/examples/${filename}`);
+        this.audit.html = await resp.text();
+      } catch (e) {
+        this.audit.error = e.message;
+      }
+    },
+
+    async runAudit() {
+      if (!this.audit.html) return;
+
+      this.audit.loading = true;
+      this.audit.error = '';
+      this.audit.result = null;
+
+      try {
+        const resp = await fetch('/api/audit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            html: this.audit.html,
+            model: this.audit.model,
+          }),
+        });
+        if (!resp.ok) {
+          const err = await resp.json();
+          throw new Error(err.detail || 'Audit failed');
+        }
+        this.audit.result = await resp.json();
+      } catch (e) {
+        this.audit.error = e.message;
+      } finally {
+        this.audit.loading = false;
+      }
+    },
+  };
+}
+</script>
+
+</body>
+</html>

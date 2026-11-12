@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="DataForge v3.2.1 — A high-performance data processing framework for Python. Processes 1.2M records/sec on a single core.">
+  <meta name="keywords" content="dataforge, data processing, python, ETL, pipeline, dataframe">
+  <meta name="author" content="DataForge Contributors">
+  <title>DataForge Documentation — v3.2.1</title>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareSourceCode",
+    "name": "DataForge",
+    "version": "3.2.1",
+    "programmingLanguage": "Python",
+    "license": "https://opensource.org/licenses/MIT",
+    "codeRepository": "https://github.com/dataforge/dataforge",
+    "description": "A high-performance data processing framework for Python. Processes 1.2M records/sec on a single core.",
+    "dateModified": "2026-03-28",
+    "operatingSystem": "Linux, macOS, Windows",
+    "runtimePlatform": "Python 3.9+"
+  }
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --sidebar-width: 260px;
+      --brand: #2563eb;
+      --brand-dark: #1d4ed8;
+      --bg: #ffffff;
+      --bg-sidebar: #f8fafc;
+      --bg-code: #f1f5f9;
+      --text: #1e293b;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --success: #16a34a;
+      --warning: #d97706;
+      --error: #dc2626;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+    }
+
+    html { scroll-behavior: smooth; }
+    body { font-family: var(--font-sans); color: var(--text); line-height: 1.7; background: var(--bg); }
+
+    /* Sidebar */
+    nav.sidebar {
+      position: fixed; top: 0; left: 0; bottom: 0;
+      width: var(--sidebar-width);
+      background: var(--bg-sidebar);
+      border-right: 1px solid var(--border);
+      padding: 24px 0;
+      overflow-y: auto;
+    }
+    nav.sidebar .logo {
+      padding: 0 24px 20px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 16px;
+    }
+    nav.sidebar .logo h2 {
+      font-size: 20px; font-weight: 700; color: var(--brand);
+    }
+    nav.sidebar .logo .version {
+      display: inline-block; font-size: 12px; background: var(--brand);
+      color: #fff; padding: 2px 8px; border-radius: 10px; margin-top: 4px;
+    }
+    nav.sidebar .logo .stars {
+      font-size: 12px; color: var(--text-muted); margin-top: 6px;
+    }
+    nav.sidebar ul { list-style: none; }
+    nav.sidebar ul li a {
+      display: block; padding: 8px 24px; font-size: 14px;
+      color: var(--text-muted); text-decoration: none; transition: all 0.15s;
+    }
+    nav.sidebar ul li a:hover,
+    nav.sidebar ul li a.active {
+      color: var(--brand); background: rgba(37,99,235,0.06);
+      border-right: 3px solid var(--brand);
+    }
+    nav.sidebar .license {
+      padding: 16px 24px; font-size: 12px; color: var(--text-muted);
+      border-top: 1px solid var(--border); margin-top: 16px;
+    }
+
+    /* Main content */
+    main {
+      margin-left: var(--sidebar-width);
+      max-width: 820px;
+      padding: 40px 48px 80px;
+    }
+
+    h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; color: var(--text); }
+    h2 { font-size: 24px; font-weight: 700; margin-top: 48px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+    h3 { font-size: 18px; font-weight: 600; margin-top: 32px; margin-bottom: 12px; }
+
+    p { margin-bottom: 16px; }
+    a { color: var(--brand); }
+
+    .subtitle { font-size: 18px; color: var(--text-muted); margin-bottom: 24px; }
+    .updated { font-size: 13px; color: var(--text-muted); margin-bottom: 32px; }
+
+    /* Code blocks */
+    pre {
+      background: var(--bg-code); border: 1px solid var(--border);
+      border-radius: 8px; padding: 16px 20px; overflow-x: auto;
+      font-family: var(--font-mono); font-size: 13.5px; line-height: 1.6;
+      margin-bottom: 20px;
+    }
+    code {
+      font-family: var(--font-mono); font-size: 13.5px;
+    }
+    p code, li code, td code {
+      background: var(--bg-code); padding: 2px 6px; border-radius: 4px;
+      font-size: 13px; color: var(--brand-dark);
+    }
+
+    /* Syntax highlighting (CSS-only via spans) */
+    .kw { color: #7c3aed; font-weight: 600; }
+    .fn { color: #2563eb; }
+    .st { color: #16a34a; }
+    .cm { color: #94a3b8; font-style: italic; }
+    .nb { color: #d97706; }
+    .op { color: #64748b; }
+
+    /* Tables */
+    table {
+      width: 100%; border-collapse: collapse; margin-bottom: 24px;
+      font-size: 14px;
+    }
+    th, td {
+      text-align: left; padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+    th { background: var(--bg-sidebar); font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-muted); }
+
+    /* Callout boxes */
+    .callout {
+      padding: 14px 18px; border-radius: 8px; margin-bottom: 20px;
+      font-size: 14px; border-left: 4px solid;
+    }
+    .callout.info { background: #eff6ff; border-color: var(--brand); }
+    .callout.warning { background: #fffbeb; border-color: var(--warning); }
+    .callout.error { background: #fef2f2; border-color: var(--error); }
+    .callout strong { display: block; margin-bottom: 4px; }
+
+    ol, ul { margin-bottom: 16px; padding-left: 24px; }
+    li { margin-bottom: 6px; }
+
+    .badge-row { display: flex; gap: 12px; align-items: center; margin-bottom: 24px; flex-wrap: wrap; }
+    .badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 12px; padding: 4px 10px; border-radius: 6px;
+      background: var(--bg-sidebar); border: 1px solid var(--border);
+      color: var(--text-muted); font-weight: 500;
+    }
+
+    section { margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+
+<nav class="sidebar" aria-label="Documentation navigation">
+  <div class="logo">
+    <h2>DataForge</h2>
+    <span class="version">v3.2.1</span>
+    <div class="stars">&#9733; 12.4k GitHub stars</div>
+  </div>
+  <ul>
+    <li><a href="#getting-started" class="active">Getting Started</a></li>
+    <li><a href="#api-reference">API Reference</a></li>
+    <li><a href="#configuration">Configuration</a></li>
+    <li><a href="#performance">Performance Benchmarks</a></li>
+    <li><a href="#troubleshooting">Troubleshooting</a></li>
+    <li><a href="#migration">Migration Guide (v2 &rarr; v3)</a></li>
+  </ul>
+  <div class="license">
+    License: <strong>MIT</strong><br>
+    Python 3.9+ required
+  </div>
+</nav>
+
+<main>
+  <article>
+
+    <h1>DataForge Documentation</h1>
+    <p class="subtitle">High-performance data processing framework for Python</p>
+    <div class="badge-row">
+      <span class="badge">&#9733; 12.4k stars</span>
+      <span class="badge">MIT License</span>
+      <span class="badge">Python 3.9+</span>
+      <span class="badge">v3.2.1</span>
+    </div>
+    <p class="updated">Last updated: <time datetime="2026-03-28">March 28, 2026</time></p>
+
+    <!-- ===================== GETTING STARTED ===================== -->
+    <section id="getting-started">
+      <h2>Getting Started</h2>
+
+      <h3>Installation</h3>
+      <p>Install DataForge from PyPI using pip:</p>
+      <pre><code><span class="cm"># Install the latest stable release</span>
+pip install dataforge
+
+<span class="cm"># Or install with optional performance extras</span>
+pip install dataforge[performance]</code></pre>
+
+      <p>Verify your installation:</p>
+      <pre><code>python -c <span class="st">"import dataforge; print(dataforge.__version__)"</span>
+<span class="cm"># Output: 3.2.1</span></code></pre>
+
+      <h3>Your First Pipeline</h3>
+      <p>DataForge uses a pipeline-based architecture. Here is a complete example that reads a CSV file, filters rows, transforms a column, and writes the result:</p>
+      <pre><code><span class="kw">from</span> dataforge <span class="kw">import</span> Pipeline, readers, transforms, writers
+
+<span class="cm"># 1. Create a pipeline</span>
+pipeline <span class="op">=</span> Pipeline(<span class="st">"my_first_pipeline"</span>)
+
+<span class="cm"># 2. Define the data source</span>
+pipeline.read(readers.csv(<span class="st">"sales_data.csv"</span>))
+
+<span class="cm"># 3. Add processing steps</span>
+pipeline.filter(<span class="st">"amount"</span>, <span class="fn">lambda</span> x: x <span class="op">></span> <span class="nb">100</span>)
+pipeline.transform(<span class="st">"date"</span>, transforms.to_datetime(<span class="st">"%Y-%m-%d"</span>))
+pipeline.add_column(<span class="st">"tax"</span>, <span class="fn">lambda</span> row: row[<span class="st">"amount"</span>] <span class="op">*</span> <span class="nb">0.21</span>)
+
+<span class="cm"># 4. Write output</span>
+pipeline.write(writers.parquet(<span class="st">"output/sales_cleaned.parquet"</span>))
+
+<span class="cm"># 5. Execute</span>
+result <span class="op">=</span> pipeline.run()
+<span class="fn">print</span>(<span class="st">f"Processed </span><span class="nb">{result.row_count}</span><span class="st"> rows in </span><span class="nb">{result.elapsed_ms}</span><span class="st">ms"</span>)</code></pre>
+
+      <div class="callout info">
+        <strong>Tip</strong>
+        Pipelines are lazy by default. No data is processed until you call <code>.run()</code>. This allows DataForge to optimize the execution plan before processing begins.
+      </div>
+    </section>
+
+    <!-- ===================== API REFERENCE ===================== -->
+    <section id="api-reference">
+      <h2>API Reference</h2>
+
+      <h3><code>Pipeline(name, config=None)</code></h3>
+      <p>Creates a new data processing pipeline.</p>
+      <table>
+        <thead><tr><th>Parameter</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>name</code></td><td><code>str</code></td><td>&mdash;</td><td>Unique identifier for the pipeline</td></tr>
+          <tr><td><code>config</code></td><td><code>ForgeConfig | None</code></td><td><code>None</code></td><td>Optional configuration object. Uses defaults if not provided.</td></tr>
+        </tbody>
+      </table>
+      <p><strong>Returns:</strong> <code>Pipeline</code> instance</p>
+      <pre><code>pipeline <span class="op">=</span> Pipeline(<span class="st">"etl_daily"</span>, config<span class="op">=</span>ForgeConfig(workers<span class="op">=</span><span class="nb">4</span>))</code></pre>
+
+      <h3><code>Pipeline.filter(column, predicate)</code></h3>
+      <p>Adds a filter step that retains only rows where <code>predicate(value)</code> returns <code>True</code>.</p>
+      <table>
+        <thead><tr><th>Parameter</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>column</code></td><td><code>str</code></td><td>&mdash;</td><td>Column name to apply the filter on</td></tr>
+          <tr><td><code>predicate</code></td><td><code>Callable[[Any], bool]</code></td><td>&mdash;</td><td>Function that returns True for rows to keep</td></tr>
+        </tbody>
+      </table>
+      <p><strong>Returns:</strong> <code>Pipeline</code> (for chaining)</p>
+      <pre><code>pipeline.filter(<span class="st">"status"</span>, <span class="fn">lambda</span> s: s <span class="op">==</span> <span class="st">"active"</span>)
+pipeline.filter(<span class="st">"age"</span>, <span class="fn">lambda</span> a: <span class="nb">18</span> <span class="op"><=</span> a <span class="op"><=</span> <span class="nb">65</span>)</code></pre>
+
+      <h3><code>Pipeline.transform(column, func)</code></h3>
+      <p>Applies a transformation function to every value in the specified column.</p>
+      <table>
+        <thead><tr><th>Parameter</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>column</code></td><td><code>str</code></td><td>&mdash;</td><td>Column name to transform</td></tr>
+          <tr><td><code>func</code></td><td><code>Callable[[Any], Any]</code></td><td>&mdash;</td><td>Transformation function applied to each value</td></tr>
+        </tbody>
+      </table>
+      <p><strong>Returns:</strong> <code>Pipeline</code> (for chaining)</p>
+      <pre><code><span class="cm"># Normalize email addresses to lowercase</span>
+pipeline.transform(<span class="st">"email"</span>, <span class="fn">lambda</span> e: e.strip().lower())</code></pre>
+
+      <h3><code>Pipeline.run(dry_run=False)</code></h3>
+      <p>Executes the pipeline and returns a result summary.</p>
+      <table>
+        <thead><tr><th>Parameter</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>dry_run</code></td><td><code>bool</code></td><td><code>False</code></td><td>If True, validates the pipeline without processing data</td></tr>
+        </tbody>
+      </table>
+      <p><strong>Returns:</strong> <code>PipelineResult</code> with attributes <code>row_count</code>, <code>elapsed_ms</code>, <code>errors</code>, and <code>warnings</code></p>
+      <pre><code>result <span class="op">=</span> pipeline.run()
+<span class="fn">print</span>(result.row_count)   <span class="cm"># 48,312</span>
+<span class="fn">print</span>(result.elapsed_ms)  <span class="cm"># 127</span></code></pre>
+    </section>
+
+    <!-- ===================== CONFIGURATION ===================== -->
+    <section id="configuration">
+      <h2>Configuration</h2>
+      <p>Create a <code>ForgeConfig</code> object to customize pipeline behavior:</p>
+      <pre><code><span class="kw">from</span> dataforge <span class="kw">import</span> ForgeConfig
+
+config <span class="op">=</span> ForgeConfig(
+    workers<span class="op">=</span><span class="nb">4</span>,
+    chunk_size<span class="op">=</span><span class="nb">10_000</span>,
+    log_level<span class="op">=</span><span class="st">"INFO"</span>,
+    error_handling<span class="op">=</span><span class="st">"skip"</span>,
+)</code></pre>
+      <table>
+        <thead><tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>workers</code></td><td><code>int</code></td><td><code>1</code></td><td>Number of parallel worker threads for processing</td></tr>
+          <tr><td><code>chunk_size</code></td><td><code>int</code></td><td><code>5000</code></td><td>Number of rows processed per chunk</td></tr>
+          <tr><td><code>log_level</code></td><td><code>str</code></td><td><code>"WARNING"</code></td><td>Logging verbosity: DEBUG, INFO, WARNING, ERROR</td></tr>
+          <tr><td><code>error_handling</code></td><td><code>str</code></td><td><code>"raise"</code></td><td><code>"raise"</code> to stop on errors, <code>"skip"</code> to skip bad rows, <code>"log"</code> to log and continue</td></tr>
+          <tr><td><code>max_memory_mb</code></td><td><code>int</code></td><td><code>512</code></td><td>Maximum memory usage in MB before spilling to disk</td></tr>
+          <tr><td><code>output_compression</code></td><td><code>str | None</code></td><td><code>None</code></td><td>Compression for output files: <code>"gzip"</code>, <code>"snappy"</code>, <code>"zstd"</code>, or <code>None</code></td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ===================== PERFORMANCE ===================== -->
+    <section id="performance">
+      <h2>Performance Benchmarks</h2>
+      <p>Benchmarks measured on an AMD Ryzen 7 7800X, 32 GB DDR5 RAM, NVMe SSD, Python 3.12, DataForge v3.2.1.</p>
+      <table>
+        <thead><tr><th>Scenario</th><th>Records</th><th>Workers</th><th>Throughput</th><th>Memory</th></tr></thead>
+        <tbody>
+          <tr><td>CSV read + filter</td><td>10M</td><td>1</td><td>1.2M records/sec</td><td>210 MB</td></tr>
+          <tr><td>CSV read + filter</td><td>10M</td><td>4</td><td>4.1M records/sec</td><td>380 MB</td></tr>
+          <tr><td>JSON transform</td><td>5M</td><td>1</td><td>820K records/sec</td><td>310 MB</td></tr>
+          <tr><td>Parquet write (snappy)</td><td>10M</td><td>1</td><td>1.8M records/sec</td><td>190 MB</td></tr>
+          <tr><td>End-to-end ETL pipeline</td><td>50M</td><td>8</td><td>9.6M records/sec</td><td>480 MB</td></tr>
+        </tbody>
+      </table>
+      <div class="callout info">
+        <strong>Key result</strong>
+        DataForge processes 1.2M records/sec on a single core. With 4 workers, throughput scales nearly linearly to 4.1M records/sec thanks to the zero-copy chunking architecture.
+      </div>
+    </section>
+
+    <!-- ===================== TROUBLESHOOTING ===================== -->
+    <section id="troubleshooting">
+      <h2>Troubleshooting</h2>
+
+      <h3><code>PipelineError: Column 'X' not found</code></h3>
+      <p>This occurs when a <code>.filter()</code> or <code>.transform()</code> references a column that does not exist in the data source. Check that the column name matches exactly (names are case-sensitive).</p>
+      <pre><code><span class="cm"># Wrong: column name has a trailing space in the CSV header</span>
+pipeline.filter(<span class="st">"amount"</span>, <span class="fn">lambda</span> x: x <span class="op">></span> <span class="nb">0</span>)
+
+<span class="cm"># Fix: strip whitespace from headers</span>
+pipeline.read(readers.csv(<span class="st">"data.csv"</span>, strip_headers<span class="op">=</span><span class="kw">True</span>))</code></pre>
+
+      <h3><code>MemoryError: Exceeded max_memory_mb</code></h3>
+      <p>The pipeline exceeded the configured memory limit. Solutions:</p>
+      <ol>
+        <li>Increase <code>max_memory_mb</code> in your config</li>
+        <li>Reduce <code>chunk_size</code> to process fewer rows at a time</li>
+        <li>Enable output compression to reduce write buffer size</li>
+      </ol>
+
+      <h3><code>ImportError: No module named 'dataforge'</code></h3>
+      <p>Ensure you have installed DataForge in the correct Python environment:</p>
+      <pre><code><span class="cm"># Check which Python is active</span>
+which python
+pip install dataforge</code></pre>
+
+      <h3>Pipeline runs slowly with large JSON files</h3>
+      <p>JSON parsing is inherently slower than CSV. For large datasets, convert to Parquet first:</p>
+      <pre><code><span class="cm"># Convert JSON to Parquet for faster subsequent reads</span>
+Pipeline(<span class="st">"convert"</span>).read(readers.json(<span class="st">"big.json"</span>)).write(writers.parquet(<span class="st">"big.parquet"</span>)).run()</code></pre>
+    </section>
+
+    <!-- ===================== MIGRATION GUIDE ===================== -->
+    <section id="migration">
+      <h2>Migration Guide: v2 to v3</h2>
+      <p>DataForge v3 introduces a new pipeline API. Here are the key changes:</p>
+
+      <h3>1. Pipeline creation</h3>
+      <pre><code><span class="cm"># v2 (deprecated)</span>
+<span class="kw">from</span> dataforge <span class="kw">import</span> Forge
+f <span class="op">=</span> Forge()
+f.load(<span class="st">"data.csv"</span>)
+
+<span class="cm"># v3 (current)</span>
+<span class="kw">from</span> dataforge <span class="kw">import</span> Pipeline, readers
+p <span class="op">=</span> Pipeline(<span class="st">"my_pipeline"</span>)
+p.read(readers.csv(<span class="st">"data.csv"</span>))</code></pre>
+
+      <h3>2. Configuration</h3>
+      <pre><code><span class="cm"># v2: dict-based config</span>
+f <span class="op">=</span> Forge(config<span class="op">=</span>{<span class="st">"threads"</span>: <span class="nb">4</span>})
+
+<span class="cm"># v3: typed ForgeConfig object</span>
+<span class="kw">from</span> dataforge <span class="kw">import</span> ForgeConfig
+p <span class="op">=</span> Pipeline(<span class="st">"my_pipeline"</span>, config<span class="op">=</span>ForgeConfig(workers<span class="op">=</span><span class="nb">4</span>))</code></pre>
+
+      <h3>3. Removed APIs</h3>
+      <table>
+        <thead><tr><th>v2 API</th><th>v3 Replacement</th></tr></thead>
+        <tbody>
+          <tr><td><code>Forge.load()</code></td><td><code>Pipeline.read()</code></td></tr>
+          <tr><td><code>Forge.save()</code></td><td><code>Pipeline.write()</code></td></tr>
+          <tr><td><code>Forge.process()</code></td><td><code>Pipeline.run()</code></td></tr>
+          <tr><td><code>config={"threads": N}</code></td><td><code>ForgeConfig(workers=N)</code></td></tr>
+        </tbody>
+      </table>
+
+      <div class="callout warning">
+        <strong>Breaking change</strong>
+        The <code>Forge</code> class was removed entirely in v3.0. All code must migrate to the <code>Pipeline</code> API. A compatibility shim is available via <code>pip install dataforge-compat</code> but will be discontinued in v3.5.
+      </div>
+    </section>
+
+  </article>
+</main>
+
+</body>
+</html>

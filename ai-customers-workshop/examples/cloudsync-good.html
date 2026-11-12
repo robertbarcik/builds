@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CloudSync Pro - Enterprise Cloud Data Synchronization Platform | Real-Time Sync, REST API, SOC 2 Certified</title>
+    <meta name="description" content="CloudSync Pro is an enterprise cloud data synchronization platform offering real-time file sync, AES-256 encryption, REST API with 47 endpoints, and SOC 2 Type II certification. Plans from $29/mo.">
+    <meta name="robots" content="index, follow">
+    <meta property="og:title" content="CloudSync Pro - Enterprise Cloud Data Synchronization Platform">
+    <meta property="og:description" content="Real-time file synchronization for enterprise teams. AES-256 encryption, 47-endpoint REST API, SOC 2 Type II certified. Starter plan from $29/mo.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://www.cloudsyncpro.com">
+
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "CloudSync Pro",
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Web, Windows, macOS, Linux, iOS, Android",
+        "description": "Enterprise cloud data synchronization platform with real-time file sync, AES-256 end-to-end encryption, REST API with 47 endpoints, and SOC 2 Type II certification.",
+        "offers": [
+            {
+                "@type": "Offer",
+                "name": "Starter",
+                "price": "29.00",
+                "priceCurrency": "USD",
+                "billingDuration": "P1M",
+                "description": "5 team members, 100 GB storage, email support, 99.5% uptime SLA"
+            },
+            {
+                "@type": "Offer",
+                "name": "Professional",
+                "price": "79.00",
+                "priceCurrency": "USD",
+                "billingDuration": "P1M",
+                "description": "25 team members, 1 TB storage, priority support, 99.9% uptime SLA, API access"
+            },
+            {
+                "@type": "Offer",
+                "name": "Enterprise",
+                "price": "199.00",
+                "priceCurrency": "USD",
+                "billingDuration": "P1M",
+                "description": "100 team members, unlimited storage, 24/7 dedicated support, 99.99% uptime SLA, full API access, SSO and audit logs"
+            }
+        ],
+        "aggregateRating": {
+            "@type": "AggregateRating",
+            "ratingValue": "4.8",
+            "reviewCount": "1247"
+        },
+        "featureList": [
+            "Real-time delta file synchronization",
+            "AES-256 end-to-end encryption",
+            "SOC 2 Type II certified",
+            "ISO 27001 certified",
+            "REST API with 47 endpoints",
+            "Role-based access control",
+            "SAML 2.0 and OIDC single sign-on",
+            "Automated workflow builder",
+            "Advanced analytics dashboard"
+        ]
+    }
+    </script>
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            color: #1a1a2e;
+            background: #ffffff;
+            line-height: 1.6;
+        }
+
+        a { color: #4361ee; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+
+        header {
+            border-bottom: 1px solid #e8e8f0;
+            padding: 16px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #fff;
+        }
+
+        .logo {
+            font-size: 22px;
+            font-weight: 700;
+            color: #1a1a2e;
+        }
+
+        .logo span { color: #4361ee; }
+
+        nav ul {
+            display: flex;
+            list-style: none;
+            gap: 32px;
+        }
+
+        nav a {
+            color: #555;
+            font-size: 15px;
+            font-weight: 500;
+        }
+
+        nav a:hover { color: #4361ee; text-decoration: none; }
+
+        .hero {
+            padding: 80px 40px;
+            max-width: 900px;
+            margin: 0 auto;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 44px;
+            font-weight: 700;
+            line-height: 1.2;
+            margin-bottom: 20px;
+            color: #1a1a2e;
+        }
+
+        .hero p {
+            font-size: 18px;
+            color: #555;
+            max-width: 650px;
+            margin: 0 auto 32px;
+        }
+
+        .cta-button {
+            display: inline-block;
+            padding: 14px 36px;
+            background: #4361ee;
+            color: #fff;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 16px;
+            transition: background 0.2s;
+        }
+
+        .cta-button:hover { background: #3451d1; text-decoration: none; }
+
+        .trust-bar {
+            display: flex;
+            justify-content: center;
+            gap: 48px;
+            margin-top: 48px;
+            padding-top: 32px;
+            border-top: 1px solid #e8e8f0;
+        }
+
+        .trust-item { text-align: center; }
+        .trust-number { font-size: 28px; font-weight: 700; color: #4361ee; }
+        .trust-label { font-size: 13px; color: #888; margin-top: 2px; }
+
+        section {
+            padding: 80px 40px;
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        .alt-bg { background: #f7f7fc; }
+        .alt-bg section { max-width: 1100px; margin: 0 auto; }
+
+        h2 {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            color: #1a1a2e;
+        }
+
+        .section-intro {
+            font-size: 17px;
+            color: #666;
+            margin-bottom: 48px;
+            max-width: 600px;
+        }
+
+        .center { text-align: center; }
+        .center .section-intro { margin-left: auto; margin-right: auto; }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 32px;
+        }
+
+        article.feature {
+            background: #fff;
+            border: 1px solid #e8e8f0;
+            border-radius: 12px;
+            padding: 32px 24px;
+        }
+
+        .alt-bg article.feature { background: #fff; }
+
+        article.feature h3 {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #1a1a2e;
+        }
+
+        article.feature p {
+            font-size: 14px;
+            color: #666;
+            line-height: 1.7;
+        }
+
+        /* Pricing table */
+        .pricing-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 32px;
+            font-size: 15px;
+        }
+
+        .pricing-table thead th {
+            background: #f7f7fc;
+            padding: 16px 20px;
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 2px solid #4361ee;
+        }
+
+        .pricing-table tbody td {
+            padding: 14px 20px;
+            border-bottom: 1px solid #e8e8f0;
+            vertical-align: top;
+        }
+
+        .pricing-table tbody tr:hover { background: #f7f7fc; }
+
+        .plan-name { font-weight: 600; color: #1a1a2e; }
+        .plan-price { font-weight: 700; color: #4361ee; font-size: 20px; }
+
+        .check { color: #22c55e; font-weight: 700; }
+        .dash { color: #ccc; }
+
+        /* FAQ */
+        .faq-list { max-width: 800px; }
+
+        .faq-item {
+            border-bottom: 1px solid #e8e8f0;
+            padding: 24px 0;
+        }
+
+        .faq-item h3 {
+            font-size: 17px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #1a1a2e;
+        }
+
+        .faq-item p {
+            font-size: 15px;
+            color: #555;
+            line-height: 1.7;
+        }
+
+        /* Footer */
+        footer {
+            border-top: 1px solid #e8e8f0;
+            padding: 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 1100px;
+            margin: 0 auto;
+            font-size: 13px;
+            color: #888;
+        }
+
+        footer nav ul { gap: 24px; }
+        footer nav a { font-size: 13px; color: #888; }
+
+        @media (max-width: 768px) {
+            h1 { font-size: 28px; }
+            .features-grid { grid-template-columns: 1fr; }
+            .trust-bar { flex-direction: column; gap: 20px; }
+            .pricing-table { font-size: 13px; }
+            .pricing-table thead th, .pricing-table tbody td { padding: 10px 8px; }
+            footer { flex-direction: column; gap: 16px; text-align: center; }
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="logo">Cloud<span>Sync</span> Pro</div>
+    <nav aria-label="Main navigation">
+        <ul>
+            <li><a href="#features">Features</a></li>
+            <li><a href="#pricing">Pricing</a></li>
+            <li><a href="#faq">FAQ</a></li>
+            <li><a href="#contact">Contact</a></li>
+        </ul>
+    </nav>
+</header>
+
+<main>
+    <section class="hero">
+        <h1>Enterprise Cloud Data Synchronization You Can Trust</h1>
+        <p>CloudSync Pro synchronizes files across unlimited devices in real time with AES-256 end-to-end encryption. SOC 2 Type II and ISO 27001 certified. Trusted by over 10,000 teams.</p>
+        <a href="#pricing" class="cta-button">View Pricing Plans</a>
+        <div class="trust-bar">
+            <div class="trust-item">
+                <div class="trust-number">99.9%</div>
+                <div class="trust-label">Uptime SLA (Professional tier)</div>
+            </div>
+            <div class="trust-item">
+                <div class="trust-number">10,000+</div>
+                <div class="trust-label">Enterprise teams</div>
+            </div>
+            <div class="trust-item">
+                <div class="trust-number">4.8/5</div>
+                <div class="trust-label">Average rating (1,247 reviews)</div>
+            </div>
+        </div>
+    </section>
+
+    <div class="alt-bg">
+    <section id="features">
+        <h2 class="center">Platform Features</h2>
+        <p class="section-intro center">Core capabilities built for enterprise reliability, security, and scale.</p>
+
+        <div class="features-grid">
+            <article class="feature">
+                <h3>Real-Time Delta Sync</h3>
+                <p>Synchronize files across unlimited devices with sub-second latency. Our proprietary delta-sync algorithm transfers only changed bytes, reducing bandwidth usage by 94% compared to full-file transfers.</p>
+            </article>
+
+            <article class="feature">
+                <h3>AES-256 End-to-End Encryption</h3>
+                <p>Client-side key management ensures your data is unreadable even to CloudSync Pro infrastructure. SOC 2 Type II certified and ISO 27001 certified. Zero-knowledge architecture.</p>
+            </article>
+
+            <article class="feature">
+                <h3>REST API with 47 Endpoints</h3>
+                <p>Full-featured REST API with comprehensive documentation. Official SDKs available for Python, Node.js, Go, and Java. Webhook support with configurable retry logic and event filtering.</p>
+            </article>
+
+            <article class="feature">
+                <h3>Advanced Analytics Dashboard</h3>
+                <p>Real-time usage metrics, storage forecasting, and team activity monitoring. Export reports in CSV or PDF format, or connect directly to business intelligence tools via our data connector.</p>
+            </article>
+
+            <article class="feature">
+                <h3>Team Management and Access Control</h3>
+                <p>Role-based access control supporting up to 100 team members per workspace. Single sign-on via SAML 2.0 and OIDC. Audit logs retained for 7 years for compliance requirements.</p>
+            </article>
+
+            <article class="feature">
+                <h3>Automated Workflow Builder</h3>
+                <p>Build sync rules, conflict resolution policies, and automated backup schedules using a visual workflow editor. Supports cron-like scheduling with timezone awareness.</p>
+            </article>
+        </div>
+    </section>
+    </div>
+
+    <section id="pricing">
+        <h2 class="center">Pricing</h2>
+        <p class="section-intro center">All plans include AES-256 encryption, real-time sync, and our core platform. No hidden fees. Cancel anytime.</p>
+
+        <table class="pricing-table">
+            <thead>
+                <tr>
+                    <th scope="col">Plan</th>
+                    <th scope="col">Monthly Price</th>
+                    <th scope="col">Team Members</th>
+                    <th scope="col">Storage</th>
+                    <th scope="col">Uptime SLA</th>
+                    <th scope="col">API Access</th>
+                    <th scope="col">SSO &amp; Audit Logs</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="plan-name">Starter</td>
+                    <td class="plan-price">$29/mo</td>
+                    <td>Up to 5</td>
+                    <td>100 GB</td>
+                    <td>99.5%</td>
+                    <td class="dash">&mdash;</td>
+                    <td class="dash">&mdash;</td>
+                </tr>
+                <tr>
+                    <td class="plan-name">Professional</td>
+                    <td class="plan-price">$79/mo</td>
+                    <td>Up to 25</td>
+                    <td>1 TB</td>
+                    <td>99.9%</td>
+                    <td class="check">Included</td>
+                    <td class="dash">&mdash;</td>
+                </tr>
+                <tr>
+                    <td class="plan-name">Enterprise</td>
+                    <td class="plan-price">$199/mo</td>
+                    <td>Up to 100</td>
+                    <td>Unlimited</td>
+                    <td>99.99%</td>
+                    <td class="check">Included</td>
+                    <td class="check">Included</td>
+                </tr>
+            </tbody>
+        </table>
+    </section>
+
+    <div class="alt-bg">
+    <section>
+        <h2 class="center">What Our Customers Say</h2>
+        <p class="section-intro center">Trusted by engineering teams at companies of every size.</p>
+
+        <div class="features-grid" style="grid-template-columns: 1fr 1fr;">
+            <article class="feature">
+                <blockquote>
+                    <p>"CloudSync Pro cut our deployment pipeline from 45 minutes to under 3 minutes. The API is rock-solid and the team management features saved us from building our own admin portal."</p>
+                </blockquote>
+                <p style="margin-top:16px;font-weight:600;">Sarah Chen</p>
+                <p style="font-size:13px;color:#888;">VP of Engineering, DataFlow Inc.</p>
+            </article>
+
+            <article class="feature">
+                <blockquote>
+                    <p>"We evaluated seven sync platforms. CloudSync Pro was the only one that met our SOC 2 compliance requirements out of the box. The audit log retention alone justified the Enterprise plan."</p>
+                </blockquote>
+                <p style="margin-top:16px;font-weight:600;">Marcus Rivera</p>
+                <p style="font-size:13px;color:#888;">CISO, HealthBridge Systems</p>
+            </article>
+        </div>
+    </section>
+    </div>
+
+    <section id="faq">
+        <h2>Frequently Asked Questions</h2>
+        <p class="section-intro">Common questions about CloudSync Pro features, pricing, and security.</p>
+
+        <div class="faq-list">
+            <div class="faq-item">
+                <h3>What security certifications does CloudSync Pro hold?</h3>
+                <p>CloudSync Pro is SOC 2 Type II certified and ISO 27001 certified. We use AES-256 end-to-end encryption with client-side key management (zero-knowledge architecture). Annual penetration testing is conducted by an independent third party.</p>
+            </div>
+
+            <div class="faq-item">
+                <h3>How does the REST API work?</h3>
+                <p>Our REST API offers 47 endpoints covering file operations, user management, webhook configuration, and analytics. Official SDKs are available for Python, Node.js, Go, and Java. API access is included in Professional ($79/mo) and Enterprise ($199/mo) plans.</p>
+            </div>
+
+            <div class="faq-item">
+                <h3>What is the uptime guarantee?</h3>
+                <p>Uptime SLAs vary by plan: Starter offers 99.5%, Professional offers 99.9%, and Enterprise offers 99.99%. SLA credits are automatically applied to your account if we fall below the guaranteed threshold in any calendar month.</p>
+            </div>
+
+            <div class="faq-item">
+                <h3>Can I upgrade or downgrade my plan at any time?</h3>
+                <p>Yes. Plan changes take effect immediately. When upgrading, you pay the prorated difference. When downgrading, the credit is applied to your next billing cycle. There are no cancellation fees on any plan.</p>
+            </div>
+
+            <div class="faq-item">
+                <h3>How many team members can I add?</h3>
+                <p>The Starter plan supports up to 5 team members, Professional supports up to 25, and Enterprise supports up to 100 team members per workspace. For organizations needing more than 100 members, contact our sales team for a custom quote.</p>
+            </div>
+        </div>
+    </section>
+</main>
+
+<footer id="contact">
+    <div>
+        <p>&copy; <time datetime="2026">2026</time> CloudSync Pro, Inc. All rights reserved.</p>
+        <p style="margin-top:4px;">Last updated: <time datetime="2026-03-15">March 15, 2026</time></p>
+    </div>
+    <nav aria-label="Footer navigation">
+        <ul>
+            <li><a href="/privacy">Privacy Policy</a></li>
+            <li><a href="/terms">Terms of Service</a></li>
+            <li><a href="/security">Security</a></li>
+            <li><a href="/docs/api">API Documentation</a></li>
+        </ul>
+    </nav>
+</footer>
+
+<img src="dashboard-screenshot.png" alt="CloudSync Pro dashboard showing real-time file synchronization status, storage usage charts, and team activity feed for an enterprise workspace with 47 active team members">
+<img src="api-docs-preview.png" alt="CloudSync Pro REST API documentation page showing authentication endpoints, file operation methods, and example code snippets in Python and Node.js">
+
+</body>
+</html>
