@@ -21,12 +21,13 @@ LocalDesk is an AI-powered IT service desk prototype used in enterprise training
 
 ## How to Run
 
-**Public demo instance (relaunched 2026-11-11):** https://desk.barcik.training on a mim-lab t3.small
-behind the app's own login form (`app/auth.py`, on only when `LOGIN_ENABLED=1`; `student` for
-participants, `robert` for Robert; passwords in `.env`). Several browsers share the box: per-person
-pushes (voice, approvals) are filtered by `isMySession` in the UI, the ops floor is shared.
-Everything about it — IDs, rsync-and-restart, stop/start, teardown — is in `deploy/README.md`.
-Check the instance still exists before assuming the URL works.
+**Public demo for a training room (not running between trainings; torn down 2026-11-12):**
+`bash deploy/launch.sh` → https://desk.barcik.training on a mim-lab t3.small in ~8 min,
+`bash deploy/teardown.sh` removes everything. Login is the app's own form (`app/auth.py`, on only
+when `LOGIN_ENABLED=1`; `student` for participants, `robert` for Robert; passwords in `.env`).
+Several browsers share the box: per-person pushes (voice, approvals) are filtered by
+`isMySession` in the UI, the ops floor is shared. Runbook, assets, room behaviour and the
+deployment log: `deploy/README.md`. Add a log row after every launch and teardown.
 
 ```bash
 ./setup.sh        # venv (prefers python3.13/3.12), deps, ollama pulls, seed, ingest

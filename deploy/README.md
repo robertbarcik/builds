@@ -1,129 +1,126 @@
-# Deploying LocalDesk on a tiny EC2 instance
+# LocalDesk for a training room: launch, run, tear down
 
-One t3.small (2 GB RAM, ~23 USD/month all in) running Ubuntu 24.04 under the `mim-lab` AWS
-profile (eu-central-1). The app runs under systemd on `127.0.0.1:7860`; Caddy sits in front and
-provides HTTPS plus a password. Ollama runs on the box for the `nomic-embed-text` embeddings only.
-The desk agent stays in cloud mode (OpenRouter), the minis and the voice orb on OpenAI, so the
-server needs both API keys in `.env`.
-
-No domain is needed: `sslip.io` turns the Elastic IP into a hostname and Caddy fetches a Let's
-Encrypt certificate for it. HTTPS matters because the voice orb needs a secure origin for the
-microphone.
-
-Why t3.small and not t3.micro: Ollama with the embedding model, ChromaDB and the app do not fit
-comfortably in 1 GB. `setup.sh` also adds a 2 GB swap file for pip and ingest peaks.
-
-## Live deployment (relaunched 2026-11-11 for a training room; the 2026-09-16 instance is gone)
-
-Login is the app's own form (`app/auth.py`, switched on by `LOGIN_ENABLED=1` in the server's
-`.env`, which `setup.sh` adds): a signed cookie covers every route and the `/ws` WebSocket. Caddy
-only terminates TLS. Basic auth was dropped because Safari does not send it on WebSocket
-handshakes. The `mim-lab-guardrails` policy caps instances at t3.small.
-
-| Item | Value |
-|---|---|
-| URL | https://desk.barcik.training (A record → the Elastic IP, zone `Z03933173SC9BZRSZEHBP`, managed with profile `barcik-demos`; `mim-lab` has no Route 53 rights). https://3-71-243-226.sslip.io also still answers, but corporate proxies tend to block sslip.io. `/etc/caddy/Caddyfile` on the box lists both hosts: pass `HOST="desk.barcik.training, 3-71-243-226.sslip.io"` if `setup.sh` is re-run. On teardown delete the `desk` A record too. |
-| Logins | `student` / `APP_PASSWORD` (participants), `robert` / `ADMIN_PASSWORD` (both in the local `.env`) |
-| AWS profile / region | `mim-lab` / eu-central-1 |
-| Instance | `i-003b37e458553a85d`, t3.small, 16 GB gp3, AMI `ubuntu-noble-24.04-amd64-server-20260904` |
-| Elastic IP | `3.71.243.226` (`eipalloc-0aee1017cb4fc5e40`) |
-| Security group | `sg-07b2081fa4a485f49` (`localdesk`: 80, 443 from anywhere; 22 only from the IP Robert had on launch day, re-authorize it when ssh times out) |
-| Key pair | `localdesk` (private key `~/.ssh/localdesk-ec2` on Robert's Mac) |
-| On the box | `/opt/localdesk` (owner `desk`), units `localdesk.service`, `ollama.service`, `caddy.service` |
-
-## Files here
-
-- `localdesk.service` — systemd unit, runs `python -m app.main` as the unprivileged `desk` user.
-- `Caddyfile` — template: hostname, reverse proxy with
-  `flush_interval -1` so the SSE chat stream reaches the browser token by token. WebSockets
-  (`/ws`) pass through Caddy unchanged.
-- `setup.sh` — idempotent host setup: swap, apt packages, Ollama + embedding model, venv, seed DB,
-  ingest knowledge base, service, Caddy config.
-
-## Recreate from scratch
+The demo is **not running** between trainings. It is launched for a session and torn down after
+it; nothing is left on AWS in between except the free `localdesk` key pair. Current state and
+history: [Deployment log](#deployment-log) at the bottom.
 
 ```bash
-export AWS_PROFILE=mim-lab AWS_DEFAULT_REGION=eu-central-1
-# 1. ssh key (generated locally, public half imported; the private key never leaves the Mac)
-ssh-keygen -t ed25519 -N "" -f ~/.ssh/localdesk-ec2
-aws ec2 import-key-pair --key-name localdesk --public-key-material fileb://~/.ssh/localdesk-ec2.pub
-
-# 2. security group in the default VPC
-VPC=$(aws ec2 describe-vpcs --filters Name=is-default,Values=true --query 'Vpcs[0].VpcId' --output text)
-SG=$(aws ec2 create-security-group --group-name localdesk --description "LocalDesk demo" \
-     --vpc-id $VPC --query GroupId --output text)
-aws ec2 authorize-security-group-ingress --group-id $SG --ip-permissions \
-  'IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=0.0.0.0/0}]' \
-  'IpProtocol=tcp,FromPort=80,ToPort=80,IpRanges=[{CidrIp=0.0.0.0/0}]' \
-  'IpProtocol=tcp,FromPort=443,ToPort=443,IpRanges=[{CidrIp=0.0.0.0/0}]'
-
-# 3. instance (latest Ubuntu 24.04 from Canonical, owner 099720109477) + Elastic IP
-AMI=$(aws ec2 describe-images --owners 099720109477 \
-      --filters "Name=name,Values=ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*" \
-      --query 'sort_by(Images,&CreationDate)[-1].ImageId' --output text)
-ID=$(aws ec2 run-instances --image-id $AMI --instance-type t3.small --key-name localdesk \
-     --security-group-ids $SG --metadata-options HttpTokens=required \
-     --block-device-mappings 'DeviceName=/dev/sda1,Ebs={VolumeSize=16,VolumeType=gp3}' \
-     --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=localdesk}]' \
-     --query 'Instances[0].InstanceId' --output text)
-aws ec2 wait instance-running --instance-ids $ID
-ALLOC=$(aws ec2 allocate-address --domain vpc --query AllocationId --output text)
-aws ec2 associate-address --instance-id $ID --allocation-id $ALLOC
-IP=$(aws ec2 describe-addresses --allocation-ids $ALLOC --query 'Addresses[0].PublicIp' --output text)
-
-# 4. code + secrets, then the setup script (HOST = IP with dots replaced by dashes + .sslip.io)
-#    .env needs OPENROUTER_API_KEY, OPENAI_API_KEY, APP_PASSWORD, ADMIN_PASSWORD
-ssh -i ~/.ssh/localdesk-ec2 ubuntu@$IP 'sudo mkdir -p /opt/localdesk && sudo chown ubuntu /opt/localdesk'
-rsync -az -e "ssh -i ~/.ssh/localdesk-ec2" --exclude venv --exclude .venv --exclude .git --exclude .env \
-  --exclude vectorstore --exclude logs --exclude 'data/db/*.db*' --exclude __pycache__ --exclude .DS_Store \
-  ./ ubuntu@$IP:/opt/localdesk/
-scp -i ~/.ssh/localdesk-ec2 .env ubuntu@$IP:/opt/localdesk/.env
-ssh -i ~/.ssh/localdesk-ec2 ubuntu@$IP "sudo HOST=${IP//./-}.sslip.io bash /opt/localdesk/deploy/setup.sh"
+bash deploy/launch.sh       # ~8 min → https://desk.barcik.training, prints the student login
+bash deploy/teardown.sh     # prints what the room spent, then removes everything
 ```
 
-## Day-to-day
+## What you get
+
+One t3.small (2 GB RAM, Ubuntu 24.04, 16 GB gp3) in eu-central-1. The app runs under systemd on
+`127.0.0.1:7860`; Caddy in front terminates HTTPS (Let's Encrypt). Ollama runs on the box for the
+`nomic-embed-text` embeddings only; every LLM call goes to OpenAI (`config.yaml → mode: openai`),
+so the server needs `OPENAI_API_KEY` in `.env`.
+
+- **URL:** https://desk.barcik.training. A branded name on purpose: on 2026-11-11 corporate
+  laptops could not open the `sslip.io` address (proxies block dynamic-DNS names), the
+  barcik.training name worked from company networks. The `<ip-with-dashes>.sslip.io` name is
+  served too as a fallback that needs no DNS.
+- **Login:** the app's own sign-in page (`app/auth.py`), switched on by `LOGIN_ENABLED=1`, which
+  `setup.sh` adds to the server's `.env` only. Local runs stay open. A signed cookie covers every
+  route and the `/ws` WebSocket. Not Caddy basic auth: Safari does not send basic-auth
+  credentials on WebSocket handshakes, and without `/ws` the ops room is dead and the human gate
+  fails closed.
+- **Accounts:** `student` / `APP_PASSWORD` (handed to the room, new on every launch) and
+  `robert` / `ADMIN_PASSWORD`; both live in the gitignored `.env` in the repo root.
+- **HTTPS is not optional:** the voice orb needs a secure origin for the microphone.
+
+## Assets, and where each one lives
+
+| Asset | Where | Notes |
+|---|---|---|
+| `launch.sh` | here | everything from nothing to a verified login page |
+| `teardown.sh` | here | finds resources by name/tag, needs no IDs; used for the 2026-11-12 teardown |
+| `setup.sh` | here, runs **on the box** | idempotent host setup: swap, apt, Ollama + embedding model, venv, seed DB, ingest KB, systemd, Caddy. Re-running it **re-seeds the DB** (wipes the room's tickets) |
+| `rotate_student_password.py` | here | new `word-word-1234` password into `.env`, old file kept as `.env.bak` |
+| `Caddyfile` | here | template, `{HOST}` may be a comma-separated list; `flush_interval -1` so SSE chat streams token by token |
+| `localdesk.service` | here | systemd unit, user `desk` |
+| AWS profile `mim-lab` | `~/.aws` | EC2. Its `mim-lab-guardrails` policy denies anything above **t3.small**, volumes over 30 GB, other regions and Route 53. Stay inside it |
+| AWS profile `barcik-demos` | `~/.aws` | Route 53 only (zone `Z03933173SC9BZRSZEHBP`, barcik.training). It has no EC2 rights |
+| Key pair `localdesk` | AWS + `~/.ssh/localdesk-ec2` | kept across launches. Lost the private half? `ssh-keygen -t ed25519 -N "" -f ~/.ssh/localdesk-ec2`, delete the AWS key pair, `aws ec2 import-key-pair --key-name localdesk --public-key-material fileb://~/.ssh/localdesk-ec2.pub` |
+| `.env` | repo root, gitignored | `OPENAI_API_KEY`, `APP_PASSWORD`, `ADMIN_PASSWORD` (`OPENROUTER_API_KEY` only for `mode: cloud`) |
+
+Created per launch and removed by `teardown.sh`: the instance (tag `Name=localdesk`) with its
+root volume, one Elastic IP (tag `Name=localdesk`), the security group `localdesk` (80/443 from
+anywhere, 22 only from the IP this Mac had at launch) and the A record `desk.barcik.training`
+(TTL 60).
+
+## Before the room gets the login
+
+1. One voice call from a real browser on the public URL (the headless check below does not
+   cover the microphone path).
+2. A spend cap on the OpenAI account. The API key never reaches the browser, but anyone with the
+   password can spend on it: voice is about 0.05 USD per minute per person.
+3. Say it out loud: conversations and voice transcripts are logged on the box, nothing personal.
+
+## While it is up
 
 ```bash
-# update the code after a change (rsync + restart; setup.sh is safe to re-run too,
-# and re-running it re-seeds the DB and re-ingests the KB)
-rsync -az -e "ssh -i ~/.ssh/localdesk-ec2" --exclude venv --exclude .venv --exclude .git --exclude .env \
-  --exclude vectorstore --exclude logs --exclude 'data/db/*.db*' --exclude __pycache__ --exclude .DS_Store \
-  ./ ubuntu@3.71.243.226:/opt/localdesk/
-ssh -i ~/.ssh/localdesk-ec2 ubuntu@3.71.243.226 'sudo systemctl restart localdesk'
+IP=$(aws ec2 describe-instances --profile mim-lab --region eu-central-1 \
+     --filters Name=tag:Name,Values=localdesk Name=instance-state-name,Values=running \
+     --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
 
-# logs / health
-ssh -i ~/.ssh/localdesk-ec2 ubuntu@3.71.243.226 'sudo journalctl -u localdesk -n 50 --no-pager'
-curl -s -c /tmp/mu.jar -o /dev/null -d "username=robert" --data-urlencode "password=$ADMIN_PASSWORD" https://3-71-243-226.sslip.io/login
-curl -s -b /tmp/mu.jar https://3-71-243-226.sslip.io/api/status | jq
+# ssh times out? This Mac's IP changed since launch (other Wi-Fi). Re-authorize it:
+SG=$(aws ec2 describe-security-groups --profile mim-lab --region eu-central-1 \
+     --filters Name=group-name,Values=localdesk --query 'SecurityGroups[0].GroupId' --output text)
+aws ec2 authorize-security-group-ingress --profile mim-lab --region eu-central-1 \
+    --group-id $SG --protocol tcp --port 22 --cidr "$(curl -s https://checkip.amazonaws.com)/32"
 
-# what participants spent (per role and model, from the app's own cost table)
-ssh -i ~/.ssh/localdesk-ec2 ubuntu@3.71.243.226 \
-  "sqlite3 /opt/localdesk/data/db/localdesk.db 'select role,model,round(sum(cost_usd),4) from request_metrics group by 1,2'"
+# push a code change. The tree belongs to `desk` after setup, hence sudo rsync + chown.
+rsync -az --rsync-path="sudo rsync" -e "ssh -i ~/.ssh/localdesk-ec2" --exclude venv --exclude .venv \
+  --exclude .git --exclude .env --exclude '.env.bak*' --exclude vectorstore --exclude logs \
+  --exclude 'data/db/*.db*' --exclude __pycache__ --exclude .DS_Store ./ ubuntu@$IP:/opt/localdesk/
+ssh -i ~/.ssh/localdesk-ec2 ubuntu@$IP 'sudo chown -R desk:desk /opt/localdesk && sudo systemctl restart localdesk'
+# (a restart drops in-memory conversations; tickets and metrics in SQLite survive)
 
-# pause between courses (instance stops; volume + Elastic IP keep costing ~5 USD/month)
-aws ec2 stop-instances  --profile mim-lab --instance-ids i-003b37e458553a85d
-aws ec2 start-instances --profile mim-lab --instance-ids i-003b37e458553a85d   # same IP, same URL
+# logs, health, spend
+ssh -i ~/.ssh/localdesk-ec2 ubuntu@$IP 'sudo journalctl -u localdesk -n 50 --no-pager'
+ssh -i ~/.ssh/localdesk-ec2 ubuntu@$IP "sudo sqlite3 /opt/localdesk/data/db/localdesk.db \
+  'select role,model,count(*),round(sum(cost_usd),4) from request_metrics group by 1,2'"
+ssh -i ~/.ssh/localdesk-ec2 ubuntu@$IP 'cd /opt/localdesk && sudo -u desk .venv/bin/python \
+  scripts/live_smoke.py "what is the SLA response time for a gold customer with a critical incident?"'
 
-# tear down completely (then delete the key pair + ~/.ssh/localdesk-ec2 if it is not coming back)
-aws ec2 terminate-instances --profile mim-lab --instance-ids i-003b37e458553a85d
-aws ec2 wait instance-terminated --profile mim-lab --instance-ids i-003b37e458553a85d
-aws ec2 release-address    --profile mim-lab --allocation-id eipalloc-0aee1017cb4fc5e40
-aws ec2 delete-security-group --profile mim-lab --group-id sg-07b2081fa4a485f49
+# signed-in API call from the Mac
+curl -s -c /tmp/mu.jar -o /dev/null -d username=robert --data-urlencode "password=$ADMIN_PASSWORD" https://desk.barcik.training/login
+curl -s -b /tmp/mu.jar https://desk.barcik.training/api/status | jq
 ```
 
-## Notes
+Expected from outside: `/` → 303 to `/login`, `/api/*` → 401, `/ws` without cookie → 403, port
+7860 unreachable.
 
-- Change a password: edit `APP_PASSWORD` / `ADMIN_PASSWORD` in the server's `.env`, re-run
-  `setup.sh` (or just the Caddy block of it).
-- Everyone shares one ops room: the simulation, sentinel, incidents, server fleet, charts and
-  the live/realtime voice switch are global. Conversations, voice calls and approval windows are
-  per browser (`isMySession` in `static/index.html`). After the first deploy the tree belongs
-  to `desk`, so later rsyncs need `--rsync-path="sudo rsync"` and a `chown -R desk:desk` after.
-- Spend: text chat is fractions of a cent per run; the voice orb bills about 0.05 USD per minute
-  of gpt-live-1 session on the OpenAI account; a running simulation calls the sentinel every 25 s.
-  Set spend caps on OpenRouter and OpenAI before handing out the `student` login, rotate the
-  password after each course.
-- Port 22 is open to the world for convenience; narrow it to your IP in the security group if
-  the box stays up for long.
-- `config.yaml` on the server is the repo copy (`server.host: 0.0.0.0`); port 7860 is not in the
-  security group, so only Caddy can reach it from outside.
+## How a full room behaves
+
+- **Shared by everyone:** simulation, sentinel threads, incidents, the server fleet, charts and
+  the live/realtime voice switch (one person's shift-click on the orb or a storm changes it for
+  all). That is the ops room; tell the room before someone terminates a server.
+- **Per browser:** conversations, voice calls and approval windows. `/ws` broadcasts to every
+  browser, so the UI drops per-person pushes it does not own (`isMySession` in
+  `static/index.html`). Before that fix one person hanging up ended everybody's call.
+- **Capacity:** on 2026-11-11 the box sat at ~620 MB of 1.9 GB RAM, swap untouched, no OOM, no
+  service restart. That was light use (see the log); a room of 20 all on voice is untested, but
+  voice audio flows browser ↔ OpenAI directly, the box only runs the tool pipeline.
+- **Voice on corporate networks:** WebRTC to OpenAI needs outbound UDP. If the page opens but
+  voice does not connect on a company laptop, that is their network, not the box.
+
+## Cost
+
+About 0.03 USD per hour while up (t3.small + Elastic IP + 16 GB gp3), roughly 23 USD if left
+on for a month. Zero when torn down; the DNS zone is paid for anyway. LLM spend is separate, on
+the OpenAI account: text turns are fractions of a cent, voice ~0.05 USD/min, a running
+simulation calls the sentinel every 25 s.
+
+## Deployment log
+
+| Date | What | Notes |
+|---|---|---|
+| 2026-09-16 | first deploy, `https://18-198-245-243.sslip.io`, Caddy basic auth, cloud mode (OpenRouter) | for 1-2 participants between trainings; instance was gone by 2026-09-30 |
+| 2026-11-11 | launched for a training room, `i-003b37e458553a85d`, 3.71.243.226, `desk.barcik.training` added mid-session | app login form and per-browser push scoping written that day (commit `7819db3`). Up ~18 h. Recorded on the box: 18 agent + 18 judge calls on gpt-6-luna and one 15 s gpt-live-1 call, 0.036 USD in total (includes the deploy checks). No errors, no restarts |
+| 2026-11-12 | torn down with `teardown.sh` | instance, volume, Elastic IP `eipalloc-0aee1017cb4fc5e40`, SG `sg-07b2081fa4a485f49` and the DNS record removed; verified empty. Key pair kept |
+
+`launch.sh` was assembled from the exact commands run by hand on 2026-11-11 and has passed a
+syntax check only; its first real run is the next training. If a step fails, the manual
+sequence is the script itself, top to bottom.
