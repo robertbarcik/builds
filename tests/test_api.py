@@ -86,6 +86,26 @@ def test_unhandled_errors_are_calm_json(monkeypatch):
     assert "secret detail" not in r.text
 
 
+def test_login_gate(monkeypatch):
+    monkeypatch.setenv("LOGIN_ENABLED", "1")
+    monkeypatch.setenv("APP_PASSWORD", "orbit-maple-1234")
+    monkeypatch.setenv("ADMIN_PASSWORD", "admin-pass-5678")
+    with TestClient(main.app) as c:
+        assert c.get("/", follow_redirects=False).status_code == 303
+        assert c.get("/api/health").status_code == 401
+        assert c.get("/static/riso.css").status_code == 200           # the login page's stylesheet
+        assert "Sign in" in c.get("/login").text
+        bad = c.post("/login", data={"username": "guest", "password": "nope"}, follow_redirects=False)
+        assert bad.status_code == 401 and "orbit" not in bad.text
+        ok = c.post("/login", data={"username": "guest", "password": "orbit-maple-1234"}, follow_redirects=False)
+        assert ok.status_code == 303 and "sd_session" in ok.headers.get("set-cookie", "")
+        h = c.get("/api/health").json()
+        assert h["login"] is True and "orbit" not in json.dumps(h) and "admin-pass" not in json.dumps(h)
+    monkeypatch.delenv("LOGIN_ENABLED")
+    with TestClient(main.app) as c:
+        assert c.get("/api/health").status_code == 200                # local runs stay open
+
+
 def test_index_and_static():
     with TestClient(main.app) as c:
         html = c.get("/").text

@@ -55,6 +55,12 @@ def _read_env_file() -> dict[str, str]:
     return out
 
 
+def env_value(name: str) -> str:
+    """A setting from the environment, else from .env (stripped). Never print secrets read here."""
+    v = os.environ.get(name, "").strip().strip('"').strip("'")
+    return v or _read_env_file().get(name, "").strip()
+
+
 def openrouter_key() -> str:
     """Return the OpenRouter key (stripped) or an empty string. Never print the result."""
     key = os.environ.get("OPENROUTER_API_KEY", "").strip()

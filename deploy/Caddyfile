@@ -1,0 +1,10 @@
+# Template, filled in by deploy/setup.sh: {HOST} -> public hostname(s), comma-separated.
+# Caddy only terminates TLS (Let's Encrypt, needs ports 80/443 open). The login is the app's
+# own cookie form (app/auth.py, LOGIN_ENABLED=1 in the server's .env), as in localdesk.
+{HOST} {
+	encode gzip
+	# /api/stream is server-sent events: flush every chunk immediately, never buffer
+	reverse_proxy 127.0.0.1:7870 {
+		flush_interval -1
+	}
+}

@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 
 from typing import Optional, Union
 
+from app.auth import LoginMiddleware, login_enabled
 from app.config import STATIC_DIR, dev_rules_enabled, key_present, load_config, model_ids, public_mode
 from app.engine.runtime import RuleRuntime
 from app.engine.store import get_store
@@ -73,6 +74,7 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="Signal Desk", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+app.add_middleware(LoginMiddleware)        # no-op unless LOGIN_ENABLED=1 (the deployed box)
 
 
 @app.exception_handler(Exception)
@@ -91,6 +93,7 @@ async def health() -> JSONResponse:
         "models": model_ids(),
         "key_present": key_present(),
         "public": public_mode(),
+        "login": login_enabled(),
         "clients": hub.client_count,
         "sim_ts": sim.tick_payload()["sim_ts"],
     })
