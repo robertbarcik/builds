@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Day the Desk Got a Mail Slot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&family=Literata:ital,opsz,wght@0,7..72,400..600;1,7..72,400&display=swap" rel="stylesheet">
+<style>
+:root { --navy:#1d2a6b; --ink:#121a47; --blue:#2a4bd7; --muted:#525b8c; --pink:#ff5fa2; --pink-ink:#c81e63;
+  --orange:#ff7a3d; --yellow:#ffe14d; --green:#1d9a6c; --paper:#f3efe4; --panel:#fbf8f0; --cream:#fff3d6;
+  --ui:'Bricolage Grotesque',system-ui,sans-serif; --read:'Literata',Georgia,serif; }
+* { box-sizing:border-box; margin:0; padding:0; }
+body { background:var(--paper); color:var(--navy); font-family:var(--ui); line-height:1.5;
+  background-image:radial-gradient(rgba(29,42,107,.07) 1px, transparent 1.2px); background-size:14px 14px; }
+main { max-width:1040px; margin:0 auto; padding:56px 16px 72px; }
+.kicker { font-weight:700; font-size:.9rem; color:var(--pink-ink); margin-bottom:10px; }
+h1 { font-stretch:78%; font-weight:800; font-size:clamp(2.3rem,6.5vw,4.2rem); line-height:.95; letter-spacing:-.02em;
+  text-shadow:.045em .04em 0 var(--pink); text-wrap:balance; }
+.lede { font-family:var(--read); font-size:1.15rem; max-width:62ch; margin:20px 0 30px; }
+.lede a, .note a, .hint a { color:var(--pink-ink); }
+.hint + .hint { margin-top:4px; }
+.screen { border:3px solid var(--navy); background:var(--ink); box-shadow:10px 10px 0 var(--yellow); }
+.screen video { display:block; width:100%; height:auto; image-rendering:pixelated; }
+.hint { font-size:.88rem; color:var(--muted); margin-top:18px; }
+h2 { font-stretch:78%; font-weight:800; font-size:1.7rem; letter-spacing:-.02em; margin:56px 0 16px; }
+.beats { list-style:none; display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px; }
+.beats li { background:var(--panel); border:2px solid var(--navy); padding:14px 16px; }
+.beats button { font:inherit; font-weight:800; font-size:.82rem; color:var(--navy); background:var(--yellow);
+  border:2px solid var(--navy); padding:2px 8px; cursor:pointer; margin-bottom:8px; }
+.beats button:hover, .beats button:focus-visible { background:var(--pink); outline:none; }
+.beats strong { display:block; font-size:1.05rem; line-height:1.25; margin-bottom:4px; }
+.beats p { font-family:var(--read); font-size:.95rem; }
+.cast { border:3px solid var(--navy); background:var(--paper); box-shadow:10px 10px 0 var(--pink); overflow-x:auto; }
+.cast img { display:block; width:100%; min-width:640px; image-rendering:pixelated; }
+.note { font-family:var(--read); max-width:66ch; margin-top:22px; }
+.files { display:flex; flex-wrap:wrap; gap:12px; margin-top:6px; }
+.files a { font-weight:800; color:var(--navy); background:var(--panel); border:2px solid var(--navy);
+  padding:9px 14px; text-decoration:none; box-shadow:4px 4px 0 var(--navy); }
+.files a:hover { background:var(--yellow); }
+.files span { font-weight:400; color:var(--muted); }
+code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:.86em; background:var(--cream); padding:1px 5px; overflow-wrap:anywhere; }
+footer { margin-top:56px; padding-top:16px; border-top:2px solid var(--navy); font-size:.86rem; color:var(--muted); max-width:78ch; }
+</style>
+</head>
+<body>
+<main>
+  <p class="kicker">Pixel film · 21 seconds · with sound</p>
+  <h1>The Day the Desk Got a Mail Slot</h1>
+  <p class="lede">How a letter to <strong>claudius@barcik.training</strong> travels, told by a small robot with a laurel wreath and a mailbag.
+    A companion to the publication <a href="https://publications.barcik.training/claudius-mailbox/">An AI Assistant with Its Own Mailbox</a>.</p>
+
+  <div class="screen">
+    <video id="film" src="claudius-mail-slot.mp4" poster="poster.png" controls loop playsinline preload="metadata"></video>
+  </div>
+  <p class="hint">Press play. The sound is a little chiptune with effects on every beat; the film also works muted.</p>
+
+  <h2>What each beat teaches</h2>
+  <ol class="beats">
+    <li><button data-t="0">0:00</button><strong>The slot and the copier</strong>
+      <p>The address is a group. Every message is passed on to two members at once.</p></li>
+    <li><button data-t="2.5">0:02</button><strong>Robert gets his copy first</strong>
+      <p>One copy shoots through the tube and lands on his desk before Claudius has seen anything.</p></li>
+    <li><button data-t="4.6">0:05</button><strong>The file waits</strong>
+      <p>Day turns to night and back. No program runs around the clock. Claudius sleeps.</p></li>
+    <li><button data-t="6.9">0:07</button><strong>"Check your mail!"</strong>
+      <p>Nothing happens until Robert opens a session and asks.</p></li>
+    <li><button data-t="9.15">0:09</button><strong>Read, then draft</strong>
+      <p>Claudius fetches the file, reads it and types a reply. The draft has not left the building.</p></li>
+    <li><button data-t="13.4">0:13</button><strong>The stamp</strong>
+      <p>Robert reads the exact text. Only his yes lets it go out.</p></li>
+    <li><button data-t="17.15">0:17</button><strong>Signed as written by an AI</strong>
+      <p>The reply flies off with its yellow AI tag, so the reader knows what wrote to them.</p></li>
+  </ol>
+
+  <h2>Meet Claudius</h2>
+  <div class="cast"><img src="claudius-sheet.png" alt="Eight poses of Claudius, a small robot with a yellow helmet, dark visor, laurel wreath and pink mailbag, standing on a navy floor: idle; walking with legs apart (contact); walking with one foot lifted (passing); asleep with closed eyes and a Z; reading a sheet of paper; typing; carrying a letter with a yellow AI tag, happy eyes; and facing the viewer, smiling and waving hello"></div>
+  <p class="note">Yellow helmet with a dark visor, laurel wreath for the Roman name, pink mailbag for the job. He is drawn in code,
+    so every pose can be changed or reused: on a slide, as a GIF in a chat, or in the next film.</p>
+
+  <h2>Files</h2>
+  <div class="files">
+    <a href="claudius-mail-slot.mp4" download>MP4 <span>1920×1080, sound</span></a>
+    <a href="claudius-mail-slot.gif" download>GIF <span>640×360, silent</span></a>
+    <a href="poster.png" download>Poster <span>PNG</span></a>
+    <a href="claudius-sheet.png" download>Character sheet <span>PNG</span></a>
+  </div>
+  <p class="note">Everything comes from one script, <code>make_film.py</code>: a 320×180 canvas in the Riso palette of the sites,
+    24 frames per second, scaled up six times without smoothing. To change a caption, a colour or the timing, edit the script and run
+    <code>python make_film.py film &lt;frames_dir&gt; &lt;out_dir&gt;</code> with the training-ops venv.</p>
+
+  <footer>This film, its music and this page were generated by AI (Anthropic's Claude, working as Claudius) for Robert Barcik, as a draft for his review.
+    The figure at the green desk is a cartoon stand-in, not a likeness.</footer>
+</main>
+<script>
+  const v = document.getElementById('film');
+  document.querySelectorAll('.beats button').forEach(b => b.addEventListener('click', () => {
+    v.currentTime = parseFloat(b.dataset.t); v.play(); v.scrollIntoView({behavior: 'smooth', block: 'center'});
+  }));
+</script>
+</body>
+</html>
