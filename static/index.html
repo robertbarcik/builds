@@ -20,7 +20,7 @@ function desk() {
     filtered: 0,
     strip: [],
     markers: [],
-    drop: null,                      // {label, before, after, pct}: reach a human per minute around the last rule change
+    drop: null,                      // {label, before, after, pct}: alerts/min since the last accepted rule, without vs with it
     tail: [],
     rules: [],                       // all rules (on and off) with live counts
     // all visible wording of the headline and the triage board in one place
@@ -356,9 +356,9 @@ function desk() {
       const d = this.drop;
       if (!d) return '';
       const n = (v) => v >= 10 ? Math.round(v) : Math.round(v * 10) / 10;
-      if (d.after == null) return `Reaching a human: ${n(d.before)}/min before “${d.label}”, measuring now…`;
+      if (d.after == null) return `“${d.label}” is live: measuring what it removes…`;
       const pct = d.pct == null ? '' : ` (${d.pct > 0 ? '+' : d.pct < 0 ? '−' : ''}${Math.abs(d.pct)}%)`;
-      return `Reaching a human: ${n(d.before)}/min before “${d.label}” → ${n(d.after)}/min now${pct}`;
+      return `Alerts reaching a human since “${d.label}”: ${n(d.before)}/min without it → ${n(d.after)}/min with it${pct}`;
     },
     get stripMax() {
       return Math.max(10, ...this.strip.map(b => b.passed + b.filtered));

@@ -101,6 +101,8 @@ class RuleRuntime:
                             live_since_ts=self.sim.tick_payload()["sim_ts"])
         self._rebuild()
         self.sim.add_marker(ar.title)
+        if hasattr(self.sim, "track_rule"):
+            self.sim.track_rule(ar.id, ar.title)       # the Now screen's noise-drop figure
         self._publish("activate", ar.id)
         return ar
 

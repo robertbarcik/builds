@@ -12,8 +12,9 @@ Steps, each a PASS/FAIL row:
 4. card      an AI incident card (origin llm) appears within 120 s
 5. engineer  a live rule-engineer run finishes with proposals within 200 s
 6. accept    the top proposal is accepted and becomes an active rule
-7. drop      within 40 s the rule has filtered alerts and "reaching a human" per minute is lower
-             after the change than before it (the Now screen's drop figure)
+7. drop      within 40 s the rule has filtered alerts and, over the minutes since it went live,
+             alerts reaching a human per minute with it are fewer than without it (the Now
+             screen's drop figure)
 Then it prints what the app's own budget says was spent. Exit code 0 only if every row passed.
 The demo is reset at the start and left with the accepted rule active.
 """
@@ -196,7 +197,7 @@ def main() -> int:
             if drop and drop.get("after") is not None and drop.get("minutes", 0) >= 8 and filtered > 0:
                 break
         ok = bool(drop and drop.get("after") is not None and drop["after"] < drop["before"] and filtered > 0)
-        row("drop", ok, (f"reaching a human {drop['before']}/min before -> {drop['after']}/min after "
+        row("drop", ok, (f"reaching a human {drop['before']}/min without the rule -> {drop['after']}/min with it "
                          f"({drop['pct']}%), rule filtered {filtered} alerts") if drop and drop.get("after") is not None
             else f"no drop figure yet (rule filtered {filtered})")
         return finish(rows, http, spent_before)

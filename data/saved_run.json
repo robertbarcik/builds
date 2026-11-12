@@ -1,12 +1,12 @@
 {
   "version": 1,
-  "saved_at": "2026-11-11T14:33:20Z",
-  "date": "2026-11-11",
+  "saved_at": "2026-11-12T07:57:42Z",
+  "date": "2026-11-12",
   "model": "anthropic/claude-sonnet-5.5",
-  "duration_s": 34.5,
-  "tool_calls": 14,
-  "cost_usd": 0.1774,
-  "summary": "5 rules proposed; together they would have removed 48.6% of last month's alerts and hidden none of the 42 incidents.",
+  "duration_s": 28.0,
+  "tool_calls": 13,
+  "cost_usd": 0.1486,
+  "summary": "4 rules proposed; together they would have removed 37.2% of last month's alerts and hidden none of the 42 incidents.",
   "log": [
     {
       "t": 0.0,
@@ -14,17 +14,17 @@
       "kind": "info"
     },
     {
-      "t": 1.9,
+      "t": 2.0,
       "text": "Counted the alerts that reach operators: 24,847 in 30 days; biggest is Checkmk “ntp_time” with 3,970 (16%)",
       "kind": "tool"
     },
     {
-      "t": 1.9,
+      "t": 2.0,
       "text": "Read the 35 incident tickets of the month (7 kinds)",
       "kind": "tool"
     },
     {
-      "t": 6.7,
+      "t": 6.8,
       "text": "Read the values of Checkmk “ntp_time”: median 171.4ms, 90th percentile 186.8ms, threshold 150ms, 41.9% clear within 5 min",
       "kind": "tool"
     },
@@ -35,61 +35,56 @@
     },
     {
       "t": 6.8,
-      "text": "Looked for early signs before ServiceNow alerts containing “certificate expired”: Prometheus Alertmanager “SSLCertExpiringSoon” came before 5 of 5, 1396.8 min ahead",
+      "text": "Looked for early signs before ServiceNow alerts containing “TLS certificate expired”: Prometheus Alertmanager “SSLCertExpiringSoon” came before 5 of 5, 1431.5 min ahead",
       "kind": "tool"
     },
     {
       "t": 6.8,
+      "text": "Looked for alerts that fire together with ServiceNow alerts containing “core network outage”: SolarWinds “iface_down” comes with 4 of 4 (100.0%)",
+      "kind": "tool"
+    },
+    {
+      "t": 12.7,
       "text": "Backtested: Test VM agent noise → 2,922 alerts saved (11.8%), 0 incidents hidden",
       "kind": "tool"
     },
     {
-      "t": 6.9,
-      "text": "Backtested: Old win hosts health service → 2,382 alerts saved (9.6%), 0 incidents hidden",
+      "t": 12.7,
+      "text": "Backtested: Old win hosts SCOM → 2,382 alerts saved (9.6%), 0 incidents hidden",
       "kind": "tool"
     },
     {
-      "t": 12.2,
-      "text": "Backtested: NTP retune → 3,934 alerts saved (15.8%), 0 incidents hidden",
+      "t": 12.8,
+      "text": "Backtested: NTP threshold → 3,934 alerts saved (15.8%), 0 incidents hidden",
       "kind": "tool"
     },
     {
-      "t": 12.3,
-      "text": "Backtested: Repo filling precursor → 8 early warnings, 4 right, 4 false alarms, median lead 2.6 h",
+      "t": 12.8,
+      "text": "Backtested: Cert expiry early warning → 7 early warnings, 7 right, 0 false alarms, median lead 40.3 h",
       "kind": "tool"
     },
     {
-      "t": 12.3,
-      "text": "Backtested: Cert expiry precursor → 5 early warnings, 0 right, 5 false alarms",
+      "t": 12.9,
+      "text": "Backtested: Backup repo early warning → 8 early warnings, 4 right, 4 false alarms, median lead 7.0 h",
       "kind": "tool"
     },
     {
-      "t": 17.9,
-      "text": "Read the values of Zabbix “cpu_util”: median 83.9%, 90th percentile 86.8%, threshold 80%, 99.7% clear within 5 min",
+      "t": 16.9,
+      "text": "Backtested: Core switch interface down grouped → 121 alerts saved (0.5%), 0 incidents hidden",
       "kind": "tool"
     },
     {
-      "t": 17.9,
-      "text": "Looked for alerts that fire together with ServiceNow alerts containing “core network outage”: nothing stands out",
-      "kind": "tool"
-    },
-    {
-      "t": 21.7,
-      "text": "Backtested: CPU retune → 2,857 alerts saved (11.5%), 0 incidents hidden",
-      "kind": "tool"
-    },
-    {
-      "t": 31.8,
-      "text": "Handed in 5 proposals after 14 tool calls",
+      "t": 25.7,
+      "text": "Handed in 5 proposals after 13 tool calls",
       "kind": "info"
     },
     {
-      "t": 32.0,
-      "text": "Rule engine re-checked 5 proposals on 30 days of history: all 5 hold up",
+      "t": 26.0,
+      "text": "Rule engine re-checked 5 proposals: kept 4, dropped 1 (Group core switch link-down alerts into one: saves only 0.5% of the alerts)",
       "kind": "info"
     },
     {
-      "t": 32.0,
+      "t": 26.0,
       "text": "Writing each rule in the syntax of the tool it is about (illustrative drafts)",
       "kind": "info"
     }
@@ -98,7 +93,7 @@
     {
       "title": "Raise NTP offset threshold to 190 ms",
       "kind": "retune",
-      "reasoning": "NTP offset warnings are the biggest family, with 3970 alerts. Half sit between 155 and 171 ms, and about 42% clear within 5 minutes. Values near tickets reach 380 to 419 ms, so a 190 ms threshold held for 10 minutes keeps those. The backtest saves 3934 alerts (15.8%) and hides no incident.",
+      "reasoning": "Most NTP warnings sit just above the 150 ms threshold, between about 155 and 190 ms, and clear within a few minutes. The values seen near tickets are much higher, over 380 ms. Keeping only offsets above 190 ms that last ten minutes drops the blips and keeps the serious drifts.",
       "rule": {
         "kind": "retune",
         "source": "checkmk",
@@ -110,56 +105,38 @@
       "native_draft": {
         "dialect": "checkmk",
         "label": "Illustrative draft",
-        "text": "ruleset: 'Parameters for NTP Time'\nconditions:\n  - check_plugin: 'ntp_time'\n  - source: 'Checkmk'\nvalues:\n  - warning_threshold: 190.0\n  - warning_sustain: 10\n  - critical_threshold: 160.0  # keep default or existing\n  - critical_sustain: 0\ncomment: 'Raise NTP offset warning threshold to 190 ms with 10 min sustain to reduce noise'"
+        "text": "ruleset: 'Parameters for NTP Time'\ncondition:\n  - check_plugin: 'ntp_time'\n  - source: 'checkmk'\n  - host_tags: '<customer>'\nparameters:\n  warning_threshold: 190.0\n  warning_sustain: 10\n  critical_threshold: 9999  # keep default or disable critical\n  critical_sustain: 0\n\n# Explanation:\n# - warning_threshold raised to 190 ms\n# - warning_sustain set to 10 minutes\n# - critical thresholds left default or disabled\n# This matches alerts where ntp_time > 190 ms sustained for 10 minutes."
       }
     },
     {
       "title": "Silence Zabbix agent alerts on test VMs",
       "kind": "suppress",
-      "reasoning": "The Zabbix agent-unavailable alert fired 3000 times in 30 days, and 97% came from three test VMs (bva, vfd and nhl test-vm-03). The backtest removes 2922 alerts (11.8%) and all 42 incidents stay visible. The rule only touches non-critical alerts on test hosts.",
+      "reasoning": "Nearly all of these agent-unavailable alerts come from the three test VMs, one per customer, which are switched off and on all the time. They clear within minutes and nobody acts on them. Production hosts do not match the pattern, so real agent outages stay visible.",
       "rule": {
         "kind": "suppress",
         "match": {
           "source": "zabbix",
           "host_glob": "*-test-vm-*",
-          "title_contains": "agent is not available",
+          "title_contains": "Zabbix agent is not available",
           "severity_in": [
             "minor",
             "warning",
             "info"
           ]
         },
-        "window_min": 1440,
+        "window_min": 60,
         "max_per_window": 0
       },
       "native_draft": {
         "dialect": "zabbix",
         "label": "Illustrative draft",
-        "text": "// Place in Zabbix frontend under Configuration → Actions → Event correlation rules\n{\n  \"name\": \"Silence Zabbix agent alerts on test VMs\",\n  \"conditions\": [\n    {\"conditiontype\": 12, \"operator\": 8, \"value\": \"*-test-vm-*\"}, // Host name matches\n    {\"conditiontype\": 16, \"operator\": 2, \"value\": \"Zabbix agent is not available\"}, // Problem name contains\n    {\"conditiontype\": 17, \"operator\": 8, \"value\": \"Average\"}, // Severity in minor/warning/info mapped to Average\n  ],\n  \"operations\": [\n    {\n      \"operationtype\": 7, // Event suppression\n      \"evaltype\": 0,\n      \"esc_period\": 1440 // Silence for 1440 minutes (1 day)\n    }\n  ]\n}\n\n// Trigger expression example for the alert:\n// nodata(/vfd-test-vm-03/agent.ping,3m)=1\n// This rule suppresses events matching host pattern and message, severity Average (minor/warning/info equivalent) for 1 day"
+        "text": "### Place in Zabbix frontend under Configuration > Actions > Event correlation rules\nName=Silence Zabbix agent alerts on test VMs\nEvent source=Triggers\nConditions:\n  - Host matches wildcard *-test-vm-*\n  - Trigger name contains \"Zabbix agent is not available\"\n  - Trigger severity in Information, Warning, Average\nOperations:\n  - Correlate events matching these conditions\n  - Suppress notifications for 60 minutes\nTrigger expression example:\n  nodata(/vfd-test-vm-03/agent.ping,3m)=1\n\n# This event correlation rule suppresses minor/warning/info alerts about agent unavailability on test VMs for 60 minutes."
       }
     },
     {
-      "title": "Raise Zabbix CPU alert to 90% for 5 min",
-      "kind": "retune",
-      "reasoning": "Zabbix high-CPU alerts sit at 81 to 87% (p99 87.4) and 99.7% clear within 5 minutes. Values near tickets go up to 98%, so a sustained reading above 90% is kept. The backtest saves 2857 alerts (11.5%) with all 42 incidents still visible.",
-      "rule": {
-        "kind": "retune",
-        "source": "zabbix",
-        "check": "cpu_util",
-        "op": ">",
-        "new_threshold": 90.0,
-        "sustain_min": 5
-      },
-      "native_draft": {
-        "dialect": "zabbix",
-        "label": "Illustrative draft",
-        "text": "# Place in Zabbix frontend under Configuration → Hosts → Triggers for host <customer-host>\n{\n  \"name\": \"High CPU utilization (over 90% for 5m)\",\n  \"expression\": \"min(/<customer-host>/system.cpu.util,5m)>90\",\n  \"priority\": 4,  # Warning\n  \"tags\": [\n    {\"tag\": \"customer\", \"value\": \"<customer>\"},\n    {\"tag\": \"service\", \"value\": \"<service>\"}\n  ],\n  \"description\": \"Alert when CPU utilization exceeds 90% for at least 5 minutes\",\n  \"status\": 0  # Enabled\n}\n\n# To reduce noise, create an action with condition:\n# Trigger name like \"High CPU utilization (over 90% for 5m)\" and tag customer=<customer>\n# and set escalation or notification accordingly."
-      }
-    },
-    {
-      "title": "Silence SCOM health alerts on old Windows hosts",
+      "title": "Silence SCOM health service on old Windows hosts",
       "kind": "suppress",
-      "reasoning": "All 2382 'Health Service unavailable' alerts come from the three legacy *-win-old-07 hosts, and they are warnings that clear in about 4 minutes. The backtest removes 9.6% of volume and hides no incident. The rule is limited to warning and info, so critical SCOM alerts still get through.",
+      "reasoning": "Only the three legacy *-win-old-07 hosts, one per customer, produce this warning, again and again. They are old machines whose agent does not report, and the alerts are not tied to tickets. Critical SCOM alerts and other hosts are not touched.",
       "rule": {
         "kind": "suppress",
         "match": {
@@ -171,36 +148,37 @@
             "info"
           ]
         },
-        "window_min": 1440,
+        "window_min": 60,
         "max_per_window": 0
       },
       "native_draft": {
         "dialect": "generic",
         "label": "Illustrative draft",
-        "text": "correlation_rules:\n  - name: Silence SCOM health alerts on old Windows hosts\n    description: |\n      Suppress warning and info alerts from SCOM containing 'Health Service unavailable'\n      on hosts matching '*-win-old-*' for at least 1440 minutes (1 day).\n    source: scom\n    conditions:\n      - field: host\n        pattern: '*-win-old-*'\n      - field: title\n        contains: 'Health Service unavailable'\n      - field: severity\n        in: ['warning', 'info']\n    suppression:\n      window_minutes: 1440\n      max_occurrences: 0\n    action: suppress\n    notes: |\n      This rule prevents alert noise from legacy Windows hosts where the Health Service\n      is known to be unavailable and alerts are not actionable."
+        "text": "correlation_rules:\n  - name: Silence SCOM health service on old Windows hosts\n    description: Suppress warning/info alerts about Health Service unavailable on *-win-old-* hosts\n    source: scom\n    conditions:\n      - field: host\n        pattern: '*-win-old-*'\n      - field: title\n        contains: 'Health Service unavailable'\n      - field: native_severity\n        in: ['Warning', 'Info']\n    action:\n      suppress:\n        duration_minutes: 60\n        max_occurrences: 0\n    note: |\n      Suppresses alerts matching the criteria for 60 minutes, effectively hiding these known issues on legacy hosts."
       }
     },
     {
-      "title": "Warn when backup repository volumes fill up",
+      "title": "Warn when certificate expiry alerts pile up",
       "kind": "precursor",
-      "reasoning": "Before all 4 'repository volume full' backup tickets, NetApp 'Volume Space Nearly Full' alerts appeared about 8 hours ahead, usually twice. The backtest raised 8 warnings, 4 of them followed by an incident (median lead about 155 minutes) and 4 false alarms. It hides nothing, so it only adds a chance to act before the nightly backups fail.",
+      "reasoning": "Checkmk certificate-expiry warnings for the webshop show up about two days before the Critical ticket 'Customer portal unreachable: TLS certificate expired'. Two such alerts within a day at one customer give a major warning well ahead of the outage. In the backtest every warning was followed by an incident, with no false alarms.",
       "rule": {
         "kind": "precursor",
         "match": {
-          "source": "netapp",
-          "title_contains": "Volume Space Nearly Full"
+          "source": "checkmk",
+          "title_contains": "HTTPS certificate"
         },
         "count": 2,
-        "within_min": 720,
+        "within_min": 1440,
         "raise": {
-          "title": "Backup repository filling up",
+          "title": "Customer certificate about to expire",
           "severity": "major"
-        }
+        },
+        "horizon_h": 48
       },
       "native_draft": {
-        "dialect": "generic",
+        "dialect": "checkmk",
         "label": "Illustrative draft",
-        "text": "correlation_rule:\n  name: \"Backup repository filling up\"\n  severity: major\n  description: \"Raise when 2 NetApp 'Volume Space Nearly Full' alerts occur within 12 hours at the same customer\"\n  source_filter:\n    vendor: netapp\n    title_contains: \"Volume Space Nearly Full\"\n  conditions:\n    count: 2\n    within: 720m\n  group_by:\n    - customer_id\n  alert:\n    title: \"Backup repository filling up\"\n    severity: major\n    suppress: false\n  match_fields:\n    - eventName\n    - sourceName\n    - cluster\n    - svm"
+        "text": "ruleset: Precursor Alerts\nconditions:\n  - source: checkmk\n  - title_contains: HTTPS certificate\ncount: 2\nwithin: 1440\nraise:\n  title: Customer certificate about to expire\n  severity: major\nhorizon: 48h\nscope: customer: <customer>"
       }
     }
   ]

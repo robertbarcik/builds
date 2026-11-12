@@ -33,7 +33,6 @@ log = logging.getLogger("signal_desk.live")
 
 STRIP_MINUTES = 30
 TAIL_LEN = 10
-DROP_WINDOW_MIN = 10        # simulated minutes on each side of a rule change for the drop figure
 
 
 class InjectRefused(Exception):
@@ -82,10 +81,11 @@ class LiveSim:
         self._ev_n = 0
         self.total = 0
         self.passed_total = 0
+        self.passed_alerts_total = 0                       # firing alerts only (no resolves)
         self.filtered_total = 0
         self.buckets: dict[int, list[int]] = {}            # minute epoch -> [passed, filtered]
         self.markers: list[dict[str, Any]] = []
-        self.drop_ref: Optional[dict[str, Any]] = None     # latest rule change, for drop_payload()
+        self.drop_ref: Optional[dict[str, Any]] = None     # latest accepted rule, for drop_payload()
         self.tail: deque[Event] = deque(maxlen=TAIL_LEN)
         self.recent: deque[Event] = deque(maxlen=5000)
         self.inject: Optional[dict[str, Any]] = None       # {id, title, customer, until_sim}
@@ -98,30 +98,44 @@ class LiveSim:
     def add_marker(self, label: str, ts: Optional[float] = None) -> None:
         t = ts if ts is not None else self.clock.now()
         self.markers.append({"ts": iso(t), "label": label})
-        # the noise-drop figure compares against the minutes just before this change
-        minute = int(t // 60 * 60)
-        first = int(self.start_ts // 60 * 60)
-        before = [self.buckets.get(k, [0, 0])[0]
-                  for k in range(max(first, minute - DROP_WINDOW_MIN * 60), minute, 60)]
-        self.drop_ref = ({"label": label, "minute": minute, "before": sum(before) / len(before)}
-                         if before else None)
+
+    def _rule_net(self, rule_id: str) -> Optional[int]:
+        """Alerts the rule has kept from a human so far (early warnings it raised count against)."""
+        hook = self.rules_hook
+        r = hook.store.get(rule_id) if hook is not None else None
+        if r is None:
+            return None
+        c = hook.counts().get(rule_id, {"filtered": 0, "raised": 0})
+        return c["filtered"] - (c["raised"] if r.rule.kind == "precursor" else 0)
+
+    def track_rule(self, rule_id: str, label: str) -> None:
+        """Start the noise-drop figure for a rule that just went live."""
+        net = self._rule_net(rule_id)
+        self.drop_ref = None if net is None else {
+            "rule_id": rule_id, "label": label, "t": self.clock.now(),
+            "passed": self.passed_alerts_total, "net": net}
 
     def drop_payload(self) -> Optional[dict[str, Any]]:
-        """One number pair for the Now screen: alerts reaching a human per simulated minute in
-        the (up to) 10 minutes before the latest rule change vs the (up to) 10 complete minutes
-        since. `after` is None until one full minute has passed."""
+        """One number pair for the Now screen, over the SAME simulated minutes since the latest
+        accepted rule went live: alerts reaching a human per minute without that rule (what
+        reached a human + what the rule removed) vs with it (what reached a human). Counted by
+        the engine, so a scenario playing at the same time affects both numbers alike. `after`
+        is None during the first simulated minute; None overall once the rule is switched off."""
         r = self.drop_ref
-        if not r:
+        if not r or self.rules_hook is None:
             return None
-        cur = int(self.clock.now() // 60 * 60)
-        mins = list(range(r["minute"] + 60, cur, 60))[-DROP_WINDOW_MIN:]
-        before = round(r["before"], 1)
-        if not mins:
-            return {"label": r["label"], "before": before, "after": None, "pct": None, "minutes": 0}
-        after = sum(self.buckets.get(k, [0, 0])[0] for k in mins) / len(mins)
-        pct = round(100.0 * (after - r["before"]) / r["before"]) if r["before"] else None
-        return {"label": r["label"], "before": before, "after": round(after, 1), "pct": pct,
-                "minutes": len(mins)}
+        ar = self.rules_hook.store.get(r["rule_id"])
+        net = self._rule_net(r["rule_id"])
+        if ar is None or not ar.enabled or net is None:
+            return None
+        mins = (self.clock.now() - r["t"]) / 60
+        if mins < 1:
+            return {"label": r["label"], "before": None, "after": None, "pct": None, "minutes": 0}
+        with_rule = (self.passed_alerts_total - r["passed"]) / mins
+        without = with_rule + (net - r["net"]) / mins
+        pct = round(100.0 * (with_rule - without) / without) if without else None
+        return {"label": r["label"], "before": round(without, 1), "after": round(with_rule, 1), "pct": pct,
+                "minutes": int(mins)}
 
     # ------------------------------------------------------------ scheduling
 
@@ -254,6 +268,7 @@ class LiveSim:
         b[0] += len(survivors)
         b[1] += dropped
         self.passed_total += len(survivors)
+        self.passed_alerts_total += sum(1 for s in survivors if s.status == "firing")
         self.filtered_total += dropped
         self.last_survivors.extend(survivors)
         for s in survivors:

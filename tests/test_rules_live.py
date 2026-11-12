@@ -93,20 +93,25 @@ def test_live_rule_raises_filtered_share_marker_and_toggle_back(tmp_path):
     assert counts_after > 0                              # live count survives the rebuild
 
 
-def test_drop_figure_before_and_after_a_rule(tmp_path):
+def test_drop_figure_without_vs_with_the_rule(tmp_path):
     sim, rt, ft = _live(tmp_path)
-    assert sim.tick_payload()["drop"] is None                 # no rule change yet
-    _run(sim, ft, 15 * 60 // 60)                               # 15 real s = 15 simulated minutes
-    rt.activate(NTP, "Checkmk NTP flaps")
+    assert sim.tick_payload()["drop"] is None                 # no rule accepted yet
+    _run(sim, ft, 15)                                          # 15 real s = 15 simulated minutes
+    ar = rt.activate(NTP, "Checkmk NTP flaps")
     d = sim.drop_payload()
-    assert d["label"] == "Checkmk NTP flaps" and d["before"] > 0 and d["after"] is None
+    assert d["label"] == "Checkmk NTP flaps" and d["after"] is None      # first minute: measuring
+    p0, n0 = sim.passed_alerts_total, rt.counts()[ar.id]["filtered"]
     _run(sim, ft, 12)
     d = sim.drop_payload()
-    assert d["minutes"] == 10 and d["after"] < d["before"] and d["pct"] < -10, d
-    # the figure is the strip's own numbers: mean "reach a human" per minute on each side
-    m = sim.drop_ref["minute"]
-    before = [sim.buckets.get(k, [0, 0])[0] for k in range(m - 600, m, 60)]
-    assert d["before"] == round(sum(before) / 10, 1)
+    assert d["after"] < d["before"] and d["pct"] < -10, d
+    # same minutes on both sides: with = what reached a human, without = that + what the rule removed
+    mins = 12.0
+    passed, removed = sim.passed_alerts_total - p0, rt.counts()[ar.id]["filtered"] - n0
+    assert removed > 0
+    assert d["after"] == round(passed / mins, 1) and d["before"] == round((passed + removed) / mins, 1)
+    rt.set_enabled(ar.id, False)
+    assert sim.drop_payload() is None                          # switched off: no claim
+    rt.set_enabled(ar.id, True)
     sim.reset()
     assert sim.drop_payload() is None
 
