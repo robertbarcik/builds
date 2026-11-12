@@ -34,6 +34,58 @@ def test_scenarios_and_inject_guard():
         c.post("/api/reset")
 
 
+FORBIDDEN = ('"truth"', "scenario_id", '"pattern"', "noise:", "tight:", "group:", "orphan:", "SECRET")
+
+
+def test_no_api_response_carries_ground_truth():
+    """Every JSON endpoint, with a scenario playing and events released: no hidden truth."""
+    with TestClient(main.app) as c:
+        c.post("/api/reset")
+        bodies = [c.post("/api/inject", json={"scenario_id": "core_uplink_down"}).text]
+        for _ in range(5):                                            # 5 x 4 simulated minutes
+            main.sim.clock.pause()
+            main.sim.clock._sim_anchor += 240
+            main.sim.step()
+        assert main.sim.total > 0 and any(e.truth for e in main.sim.recent)   # truth exists server-side
+        for path in ("/api/health", "/api/scenarios", "/api/proposals", "/api/rules", "/api/incidents",
+                     "/api/budget"):
+            r = c.get(path)
+            assert r.status_code == 200, path
+            bodies.append(r.text)
+        bodies.append(json.dumps(main.sim.snapshot()))                # the stream's hello / tick
+        bodies.append(json.dumps(main.engineer.snapshot()))
+        for b in bodies:
+            for bad in FORBIDDEN:
+                assert bad not in b, (bad, b[:200])
+        c.post("/api/reset")
+
+
+def test_public_mode_tightens_caps(monkeypatch):
+    from app import config
+    monkeypatch.setenv("SIGNAL_DESK_PUBLIC", "1")
+    config.load_config.cache_clear()
+    try:
+        cfg = config.load_config()
+        pub = cfg["public"]["caps"]
+        assert cfg["caps"]["engineer_cooldown_s"] == pub["engineer_cooldown_s"] >= 300
+        assert cfg["caps"]["usd_per_day_global"] == pub["usd_per_day_global"]
+        assert not config.dev_rules_enabled()
+    finally:
+        monkeypatch.delenv("SIGNAL_DESK_PUBLIC")
+        config.load_config.cache_clear()
+    assert config.load_config()["caps"]["engineer_cooldown_s"] == 90
+
+
+def test_unhandled_errors_are_calm_json(monkeypatch):
+    def boom():
+        raise RuntimeError("secret detail")
+    monkeypatch.setattr(main.budget, "snapshot", boom)
+    with TestClient(main.app, raise_server_exceptions=False) as c:
+        r = c.get("/api/budget")
+    assert r.status_code == 500 and r.json() == {"ok": False, "error": "server_error"}
+    assert "secret detail" not in r.text
+
+
 def test_index_and_static():
     with TestClient(main.app) as c:
         html = c.get("/").text

@@ -4,6 +4,8 @@ optionally put it live on the running server.
 Usage:
   .venv/bin/python scripts/try_rule.py examples/rules/checkmk_ntp_flaps.json [more.json ...]
   .venv/bin/python scripts/try_rule.py examples/rules/checkmk_ntp_flaps.json --activate
+    (--activate needs the server started with SIGNAL_DESK_DEV=1, e.g. `SIGNAL_DESK_DEV=1 ./run.sh`;
+     the manual-rule hook is off by default)
   options: --no-active (backtest without the seed / active rules), --url http://127.0.0.1:7870
 
 A rule file is either {"title": "...", "rule": {...}} or a bare rule object. The backtest runs
@@ -94,6 +96,9 @@ def main() -> int:
             code, d = _http("POST", f"{args.url}/api/rules", {"title": title, "rule": rule_d})
             if code == 200:
                 print(f"   ACTIVATED on {args.url} as {d['rule']['id']}")
+            elif code == 403:
+                rc = 1
+                print("   not activated: the server's manual-rule hook is off (restart it with SIGNAL_DESK_DEV=1)")
             else:
                 rc = 1
                 print(f"   activation failed (HTTP {code}): {d}")

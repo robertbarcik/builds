@@ -33,10 +33,15 @@ prices:
   openai/gpt-4.1-mini: {input: 0.40, output: 1.60}
   anthropic/claude-sonnet-5.5: {input: 2.00, output: 10.00}
 
+# Spend caps (app/llm/budget.py), sliding windows of real time. Measured 2026-11-11: live triage
+# with a browser open is ~450 calls and ~$0.45-0.6 an hour; one engineer run ~$0.2-0.4.
+# Hitting a cap never shows an error: triage drops to rule-based grouping (chip "AI paused"),
+# the engineer offers the saved run.
 caps:
   calls_per_hour_global: 900
   usd_per_hour_global: 2.00
-  calls_per_hour_session: 450
+  usd_per_day_global: 10.00     # a browser tab left open all day stops at this
+  calls_per_hour_session: 450   # "session" = the rule engineer (triage is shared, global caps only)
   usd_per_hour_session: 1.00
   # one rule-engineer run start per cooldown, globally. The plan says one per 10 minutes; 90 s
   # keeps a live demo sitting moving (a run costs about $0.2-0.4; the per-session dollar cap
@@ -46,6 +51,20 @@ caps:
   engineer_max_seconds: 180
   triage_interval_s: 8
   triage_max_lines: 60
+
+# SIGNAL_DESK_PUBLIC=1 (the deploy kit's systemd unit sets it): these caps replace the ones above
+# and the developer hook POST /api/rules is off whatever `dev` says.
+public:
+  caps:
+    usd_per_hour_global: 1.50
+    usd_per_day_global: 6.00
+    usd_per_hour_session: 0.80    # about two engineer runs an hour
+    engineer_cooldown_s: 300      # one live engineer run start per 5 minutes (saved run always works)
+
+# Developer aids. POST /api/rules (scripts/try_rule.py --activate) only when manual_rules is true
+# or SIGNAL_DESK_DEV=1 is set.
+dev:
+  manual_rules: false
 
 # Live triage board (app/triage/loop.py). Minutes are SIMULATED (60 per real minute).
 triage:

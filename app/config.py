@@ -16,10 +16,30 @@ HISTORY_PATH = DATA_DIR / "history.jsonl"
 STATIC_DIR = ROOT / "static"
 
 
+def _flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def public_mode() -> bool:
+    """SIGNAL_DESK_PUBLIC=1 (set by the deploy kit's systemd unit): tighter caps, no dev hooks."""
+    return _flag("SIGNAL_DESK_PUBLIC")
+
+
 @lru_cache(maxsize=1)
 def load_config() -> dict[str, Any]:
     with CONFIG_PATH.open() as fh:
-        return yaml.safe_load(fh)
+        cfg = yaml.safe_load(fh)
+    if public_mode():
+        cfg.setdefault("caps", {}).update((cfg.get("public") or {}).get("caps") or {})
+    return cfg
+
+
+def dev_rules_enabled() -> bool:
+    """POST /api/rules (manual rule creation, a developer aid for scripts/try_rule.py) is off unless
+    config.yaml `dev.manual_rules` or SIGNAL_DESK_DEV=1 turns it on; never on a public deploy."""
+    if public_mode():
+        return False
+    return _flag("SIGNAL_DESK_DEV") or bool((load_config().get("dev") or {}).get("manual_rules", False))
 
 
 def _read_env_file() -> dict[str, str]:

@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 
 from typing import Optional, Union
 
-from app.config import STATIC_DIR, key_present, load_config, model_ids
+from app.config import STATIC_DIR, dev_rules_enabled, key_present, load_config, model_ids, public_mode
 from app.engine.runtime import RuleRuntime
 from app.engine.store import get_store
 from app.engineer.agent import EngineerRefused, EngineerService
@@ -72,7 +72,14 @@ async def lifespan(_app: FastAPI):
                 pass
 
 
-app = FastAPI(title="Signal Desk", lifespan=lifespan)
+app = FastAPI(title="Signal Desk", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+
+
+@app.exception_handler(Exception)
+async def calm_error(request: Request, exc: Exception) -> JSONResponse:
+    """Never a traceback in the browser: log it, answer with a short JSON the UI can live with."""
+    log.exception("unhandled error on %s %s", request.method, request.url.path)
+    return JSONResponse({"ok": False, "error": "server_error"}, status_code=500)
 
 
 @app.get("/api/health")
@@ -83,6 +90,7 @@ async def health() -> JSONResponse:
         "uptime_s": round(time.time() - STARTED_AT, 1),
         "models": model_ids(),
         "key_present": key_present(),
+        "public": public_mode(),
         "clients": hub.client_count,
         "sim_ts": sim.tick_payload()["sim_ts"],
     })
@@ -205,7 +213,12 @@ async def toggle_rule(rule_id: str, request: Request) -> JSONResponse:
 
 @app.post("/api/rules")
 async def add_rule(request: Request) -> JSONResponse:
-    """Developer hook (scripts/try_rule.py --activate): {"title": ..., "rule": {...}}."""
+    """Developer hook (scripts/try_rule.py --activate): {"title": ..., "rule": {...}}. Off by
+    default: config.yaml `dev.manual_rules: true` or SIGNAL_DESK_DEV=1 (never with SIGNAL_DESK_PUBLIC)."""
+    if not dev_rules_enabled():
+        return JSONResponse({"error": "dev_only",
+                             "detail": "manual rules are off; set SIGNAL_DESK_DEV=1 to use this developer hook"},
+                            status_code=403)
     try:
         body = await request.json()
     except Exception:

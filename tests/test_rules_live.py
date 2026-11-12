@@ -140,7 +140,21 @@ def test_listeners_receive_survivors_only(tmp_path):
 
 # ---------------------------------------------------------------- API
 
-def test_rules_api_toggle_activate_reset():
+def test_manual_rule_hook_is_off_by_default(monkeypatch):
+    monkeypatch.delenv("SIGNAL_DESK_DEV", raising=False)
+    with TestClient(main.app) as c:
+        c.post("/api/reset")
+        r = c.post("/api/rules", json={"title": "Checkmk NTP flaps", "rule": NTP})
+        assert r.status_code == 403 and r.json()["error"] == "dev_only"
+        assert len(c.get("/api/rules").json()["rules"]) == len(SEED_RULES)
+        monkeypatch.setenv("SIGNAL_DESK_DEV", "1")
+        monkeypatch.setenv("SIGNAL_DESK_PUBLIC", "1")              # a public deploy never allows it
+        assert c.post("/api/rules", json={"title": "x", "rule": NTP}).status_code == 403
+
+
+def test_rules_api_toggle_activate_reset(monkeypatch):
+    monkeypatch.setenv("SIGNAL_DESK_DEV", "1")
+    monkeypatch.delenv("SIGNAL_DESK_PUBLIC", raising=False)
     with TestClient(main.app) as c:
         c.post("/api/reset")
         d = c.get("/api/rules").json()

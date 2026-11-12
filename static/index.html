@@ -28,7 +28,8 @@ function desk() {
       inLabel: 'alerts came in', outLabel: 'need a human', outLabelOne: 'needs a human',
       passedLabel: 'got past the rules', filteredLabel: 'filtered by rules',
       cost: (usd) => usd === null ? 'Live triage AI cost under $0.001 per minute' : `Live triage AI cost ≈ $${usd} per minute`,
-      degraded: 'AI paused, rule-based grouping',
+      degraded: (reason) => reason === 'budget' ? 'AI paused (spend cap reached), rule-based grouping'
+        : reason === 'no_model' ? 'No AI configured, rule-based grouping' : 'AI paused, rule-based grouping',
       emptyBoard: 'Nothing needs a human right now.',
       cause: 'Likely cause', evidence: (n, t) => `Evidence: ${n} alert${n === 1 ? '' : 's'} from ${t} tool${t === 1 ? '' : 's'}`,
       more: (n) => `and ${n} more`, gotIt: 'Got it', writing: 'Writing a summary…',
@@ -66,7 +67,7 @@ function desk() {
           saved: 'alerts saved last month', share: 'of all alerts', caught: 'incidents still caught',
           right: 'warnings that were right', falseAlarms: 'false alarms', lead: 'median lead time',
         },
-        errorText: (r) => ({
+        errorText: (r, saved = true) => ({
           budget: 'The AI budget for this hour is used up, so the AI did not run.',
           cooldown: 'The AI ran a moment ago and needs a short pause.',
           ai_unavailable: 'The AI service could not be reached just now.',
@@ -74,7 +75,7 @@ function desk() {
           timeout: 'The AI did not finish in three minutes.',
           no_proposals: 'None of the AI’s proposals held up in the backtest.',
           cancelled: 'The run stopped because nobody was watching.',
-        }[r] || 'The AI run did not finish.') + ' You can load the last good run instead; its numbers are recomputed now.',
+        }[r] || 'The AI run did not finish.') + (saved ? ' You can load the last good run instead; its numbers are recomputed now.' : ''),
         busy: 'A run is already in progress.',
       },
     },
@@ -463,7 +464,7 @@ function desk() {
       </div>
       <div class="ai-line" x-show="simTs" x-cloak>
         <span class="cost" :title="costTitle" x-text="costText"></span>
-        <span class="chip paused" x-show="triage.degraded" x-text="copy.degraded" role="status"></span>
+        <span class="chip paused" x-show="triage.degraded" x-text="copy.degraded(triage.reason)" role="status"></span>
       </div>
     </div>
     <button class="btn btn-big" @click="openBreak()">Break something</button>
@@ -564,7 +565,7 @@ function desk() {
     <p x-text="copy.eng.introText"></p>
     <template x-if="eng.state === 'failed' && eng.error">
       <div class="eng-error" role="status">
-        <p x-text="copy.eng.errorText(eng.error.reason)"></p>
+        <p x-text="copy.eng.errorText(eng.error.reason, !!eng.saved_available)"></p>
         <button class="btn" x-show="eng.saved_available" @click="loadSaved()" x-text="copy.eng.loadSavedBtn(eng.saved_date)"></button>
       </div>
     </template>
