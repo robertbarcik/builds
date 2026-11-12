@@ -1,0 +1,14 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+openai==3.13.0          # Live API (gpt-live-1 sessions + sideband) needs >= 3.x
+websockets>=13,<18      # sideband / primary WebSocket transport for the openai SDK
+chromadb==0.5.23
+pyyaml==6.0.2
+httpx==0.28.1
+python-multipart==0.0.20
+jinja2==3.1.4
+aiofiles==24.1.0
+opentelemetry-api==1.40.0
+opentelemetry-sdk==1.40.0
+opentelemetry-exporter-otlp-proto-http==1.40.0
+mcp>=1.0.0

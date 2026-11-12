@@ -1,0 +1,74 @@
+# LocalDesk Configuration
+# Switch between "local", "cloud" (OpenRouter) and "openai" mode
+
+mode: "openai"
+
+local:
+  base_url: "http://localhost:11434/v1"
+  model: "qwen3.5:4b"
+  api_key: "not-needed"
+
+cloud:
+  base_url: "https://openrouter.ai/api/v1"
+  model: "qwen/qwen3-30b-a3b"
+  api_key: "${OPENROUTER_API_KEY}"
+
+# OpenAI (background roles + voice; also the whole agent when mode: "openai"). Missing key => roles fall back to the agent model.
+openai:
+  base_url: "https://api.openai.com/v1"
+  model: "gpt-6-luna"     # agent + judge model when mode: "openai" (tools need luna, see roles)
+  api_key: "${OPENAI_API_KEY}"
+
+# Per-role model routing. provider "mode" follows the local/cloud/openai switch above.
+# gpt-6 tiers: luna (cheapest, the only tier that can call tools on Chat Completions),
+# sol (balanced, prose), astra (flagship). Tool-using roles (agent, audit_chat) => luna.
+roles:
+  agent:      { provider: mode }
+  judge:      { provider: mode }   # override: { provider: openai, model: gpt-6.1-sol }
+  sentinel:   { provider: openai, model: gpt-6-luna }
+  writer:     { provider: openai, model: gpt-6.1-sol }
+  audit_chat: { provider: openai, model: gpt-6-luna }
+  voice:      { provider: openai, model: gpt-live-1 }   # informational; see `voice:` below
+
+# Voice channel.
+#   live     - gpt-live-1 (full duplex). The model keeps listening and talking
+#              while it delegates the task to OUR backend: the request runs
+#              through the normal 3-layer guardrail pipeline + tools, and the
+#              result is handed back for the model to speak. Billed per second.
+#   realtime - the older gpt-realtime path: tools bridged from the browser,
+#              guardrails bypassed (kept as a fallback and as a teaching contrast).
+# The mode can also be switched at runtime (shift-click the voice orb).
+voice:
+  mode: "live"
+  live_model: "gpt-live-1"
+  realtime_model: "gpt-realtime-2.1-mini"
+  transcription_model: "gpt-live-transcribe"   # realtime path only; whisper-1 is deprecated
+  voice: "marin"
+
+# Ops simulation + sentinel pacing
+simulation:
+  sentinel_cadence_s: 25
+  max_events_per_min: 12
+
+# Embedding model (always local via Ollama)
+embedding:
+  model: "nomic-embed-text"
+  base_url: "http://localhost:11434"
+
+# ChromaDB
+vectorstore:
+  path: "./vectorstore"
+  collection: "localdesk_kb"
+
+# Database
+database:
+  path: "./data/db/localdesk.db"
+
+# Audit logging
+audit:
+  path: "./logs/audit.jsonl"
+
+# Server
+server:
+  host: "0.0.0.0"
+  port: 7860

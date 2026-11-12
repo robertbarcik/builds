@@ -1,0 +1,15 @@
+[Unit]
+Description=LocalDesk / mu (FastAPI + uvicorn on 127.0.0.1:7860, Caddy in front)
+After=network-online.target ollama.service
+Wants=network-online.target ollama.service
+
+[Service]
+User=desk
+Group=desk
+WorkingDirectory=/opt/localdesk
+ExecStart=/opt/localdesk/.venv/bin/python -m app.main
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
