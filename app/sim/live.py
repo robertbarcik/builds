@@ -33,6 +33,7 @@ log = logging.getLogger("signal_desk.live")
 
 STRIP_MINUTES = 30
 TAIL_LEN = 10
+DROP_WINDOW_MIN = 10        # simulated minutes on each side of a rule change for the drop figure
 
 
 class InjectRefused(Exception):
@@ -84,6 +85,7 @@ class LiveSim:
         self.filtered_total = 0
         self.buckets: dict[int, list[int]] = {}            # minute epoch -> [passed, filtered]
         self.markers: list[dict[str, Any]] = []
+        self.drop_ref: Optional[dict[str, Any]] = None     # latest rule change, for drop_payload()
         self.tail: deque[Event] = deque(maxlen=TAIL_LEN)
         self.recent: deque[Event] = deque(maxlen=5000)
         self.inject: Optional[dict[str, Any]] = None       # {id, title, customer, until_sim}
@@ -94,7 +96,32 @@ class LiveSim:
         self.hub.publish("reset", self.snapshot())
 
     def add_marker(self, label: str, ts: Optional[float] = None) -> None:
-        self.markers.append({"ts": iso(ts if ts is not None else self.clock.now()), "label": label})
+        t = ts if ts is not None else self.clock.now()
+        self.markers.append({"ts": iso(t), "label": label})
+        # the noise-drop figure compares against the minutes just before this change
+        minute = int(t // 60 * 60)
+        first = int(self.start_ts // 60 * 60)
+        before = [self.buckets.get(k, [0, 0])[0]
+                  for k in range(max(first, minute - DROP_WINDOW_MIN * 60), minute, 60)]
+        self.drop_ref = ({"label": label, "minute": minute, "before": sum(before) / len(before)}
+                         if before else None)
+
+    def drop_payload(self) -> Optional[dict[str, Any]]:
+        """One number pair for the Now screen: alerts reaching a human per simulated minute in
+        the (up to) 10 minutes before the latest rule change vs the (up to) 10 complete minutes
+        since. `after` is None until one full minute has passed."""
+        r = self.drop_ref
+        if not r:
+            return None
+        cur = int(self.clock.now() // 60 * 60)
+        mins = list(range(r["minute"] + 60, cur, 60))[-DROP_WINDOW_MIN:]
+        before = round(r["before"], 1)
+        if not mins:
+            return {"label": r["label"], "before": before, "after": None, "pct": None, "minutes": 0}
+        after = sum(self.buckets.get(k, [0, 0])[0] for k in mins) / len(mins)
+        pct = round(100.0 * (after - r["before"]) / r["before"]) if r["before"] else None
+        return {"label": r["label"], "before": before, "after": round(after, 1), "pct": pct,
+                "minutes": len(mins)}
 
     # ------------------------------------------------------------ scheduling
 
@@ -256,7 +283,8 @@ class LiveSim:
         d = {
             "sim_ts": iso(self.clock.now()), "speed": self.clock.speed, "paused": self.clock.paused,
             "total": self.total, "passed": self.passed_total, "filtered": self.filtered_total,
-            "strip": self.strip(), "markers": list(self.markers), "inject": self.inject_state(),
+            "strip": self.strip(), "markers": list(self.markers), "drop": self.drop_payload(),
+            "inject": self.inject_state(),
             "clients": self.hub.client_count,
         }
         if self.rules_hook is not None:

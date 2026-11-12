@@ -20,6 +20,7 @@ function desk() {
     filtered: 0,
     strip: [],
     markers: [],
+    drop: null,                      // {label, before, after, pct}: reach a human per minute around the last rule change
     tail: [],
     rules: [],                       // all rules (on and off) with live counts
     // all visible wording of the headline and the triage board in one place
@@ -299,6 +300,7 @@ function desk() {
       this.applyCounts(m.rule_counts);
       this.strip = m.strip || [];
       this.markers = m.markers || [];
+      this.drop = m.drop || null;
       if (m.inject) {
         const wasActive = this.inject && this.inject.active;
         this.inject = m.inject;
@@ -349,6 +351,14 @@ function desk() {
     },
 
     // ---- noise strip
+    get dropText() {
+      const d = this.drop;
+      if (!d) return '';
+      const n = (v) => v >= 10 ? Math.round(v) : Math.round(v * 10) / 10;
+      if (d.after == null) return `Reaching a human: ${n(d.before)}/min before “${d.label}”, measuring now…`;
+      const pct = d.pct == null ? '' : ` (${d.pct > 0 ? '+' : d.pct < 0 ? '−' : ''}${Math.abs(d.pct)}%)`;
+      return `Reaching a human: ${n(d.before)}/min before “${d.label}” → ${n(d.after)}/min now${pct}`;
+    },
     get stripMax() {
       return Math.max(10, ...this.strip.map(b => b.passed + b.filtered));
     },
@@ -470,6 +480,7 @@ function desk() {
         <span><i class="key-pass"></i>Reach a human</span>
       </div>
     </div>
+    <p class="drop" x-show="drop" x-cloak role="status" x-text="dropText"></p>
     <div class="strip" role="img" aria-label="Alerts per simulated minute over the last 30 minutes">
       <template x-for="(b, i) in strip" :key="b.t">
         <div class="bar" :class="{ now: i === strip.length - 1 }" :title="`${clock(b.t)}  ${b.passed} passed, ${b.filtered} filtered`">

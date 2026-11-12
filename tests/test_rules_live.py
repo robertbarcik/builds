@@ -93,6 +93,24 @@ def test_live_rule_raises_filtered_share_marker_and_toggle_back(tmp_path):
     assert counts_after > 0                              # live count survives the rebuild
 
 
+def test_drop_figure_before_and_after_a_rule(tmp_path):
+    sim, rt, ft = _live(tmp_path)
+    assert sim.tick_payload()["drop"] is None                 # no rule change yet
+    _run(sim, ft, 15 * 60 // 60)                               # 15 real s = 15 simulated minutes
+    rt.activate(NTP, "Checkmk NTP flaps")
+    d = sim.drop_payload()
+    assert d["label"] == "Checkmk NTP flaps" and d["before"] > 0 and d["after"] is None
+    _run(sim, ft, 12)
+    d = sim.drop_payload()
+    assert d["minutes"] == 10 and d["after"] < d["before"] and d["pct"] < -10, d
+    # the figure is the strip's own numbers: mean "reach a human" per minute on each side
+    m = sim.drop_ref["minute"]
+    before = [sim.buckets.get(k, [0, 0])[0] for k in range(m - 600, m, 60)]
+    assert d["before"] == round(sum(before) / 10, 1)
+    sim.reset()
+    assert sim.drop_payload() is None
+
+
 def test_live_created_events_are_marked_and_truth_free(tmp_path):
     sim, rt, ft = _live(tmp_path)
     rt.activate({"kind": "precursor", "match": {"source": "checkmk", "title_contains": "NTP Time"}, "count": 2,
