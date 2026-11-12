@@ -109,6 +109,12 @@ def test_drop_figure_without_vs_with_the_rule(tmp_path):
     passed, removed = sim.passed_alerts_total - p0, rt.counts()[ar.id]["filtered"] - n0
     assert removed > 0
     assert d["after"] == round(passed / mins, 1) and d["before"] == round((passed + removed) / mins, 1)
+    # the strip counts the same unit (firing alerts), so the level line drawn from these
+    # numbers sits on the bars: the minutes since the rule add up to the engine's counts
+    assert d["since_ts"] == sim.markers[-1]["ts"]
+    since = [b for b in sim.strip() if b["t"] >= d["since_ts"]]
+    assert sum(b["passed"] for b in since) == passed
+    assert sum(b["filtered"] for b in since) >= removed          # + what the seed rules removed
     rt.set_enabled(ar.id, False)
     assert sim.drop_payload() is None                          # switched off: no claim
     rt.set_enabled(ar.id, True)

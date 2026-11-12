@@ -7,8 +7,9 @@ the clock run while at least one browser is connected.
 
 Extension points for later milestones:
 - `self.rules_hook`: the rule engine (app/engine/runtime.RuleRuntime). Every raw event goes
-  through `process(ev)`; the strip stacks what reached a human vs what rules filtered per
-  minute. (`self.filter`, callable(Event) -> bool, is the simpler fallback when no hook is set.)
+  through `process(ev)`; the strip stacks the firing alerts that reached a human vs the firing
+  alerts rules filtered per minute (resolves left out, the same unit as the drop figure, so its
+  level line sits on the bars). (`self.filter`, callable(Event) -> bool, is the simpler fallback when no hook is set.)
 - `self.listeners`: callables(list[Event]) receiving each step's SURVIVORS: the events that got
   past the rules, including early warnings / grouped alerts rules created (triage loop).
 - `add_marker(label)`: a labelled marker on the strip where a rule went live.
@@ -83,7 +84,7 @@ class LiveSim:
         self.passed_total = 0
         self.passed_alerts_total = 0                       # firing alerts only (no resolves)
         self.filtered_total = 0
-        self.buckets: dict[int, list[int]] = {}            # minute epoch -> [passed, filtered]
+        self.buckets: dict[int, list[int]] = {}            # minute epoch -> [passed, filtered] firing alerts
         self.markers: list[dict[str, Any]] = []
         self.drop_ref: Optional[dict[str, Any]] = None     # latest accepted rule, for drop_payload()
         self.tail: deque[Event] = deque(maxlen=TAIL_LEN)
@@ -120,7 +121,8 @@ class LiveSim:
         accepted rule went live: alerts reaching a human per minute without that rule (what
         reached a human + what the rule removed) vs with it (what reached a human). Counted by
         the engine, so a scenario playing at the same time affects both numbers alike. `after`
-        is None during the first simulated minute; None overall once the rule is switched off."""
+        is None during the first simulated minute; None overall once the rule is switched off.
+        `since_ts` is the simulated time the rule went live: the strip draws its level step there."""
         r = self.drop_ref
         if not r or self.rules_hook is None:
             return None
@@ -129,13 +131,15 @@ class LiveSim:
         if ar is None or not ar.enabled or net is None:
             return None
         mins = (self.clock.now() - r["t"]) / 60
+        since = iso(r["t"])
         if mins < 1:
-            return {"label": r["label"], "before": None, "after": None, "pct": None, "minutes": 0}
+            return {"label": r["label"], "before": None, "after": None, "pct": None, "minutes": 0,
+                    "since_ts": since}
         with_rule = (self.passed_alerts_total - r["passed"]) / mins
         without = with_rule + (net - r["net"]) / mins
         pct = round(100.0 * (with_rule - without) / without) if without else None
         return {"label": r["label"], "before": round(without, 1), "after": round(with_rule, 1), "pct": pct,
-                "minutes": int(mins)}
+                "minutes": int(mins), "since_ts": since}
 
     # ------------------------------------------------------------ scheduling
 
@@ -236,18 +240,19 @@ class LiveSim:
             out.append(ev)
             if self.rules_hook is not None:
                 survivors, dropped = self.rules_hook.process(ev)
-                self._account(minute, survivors, dropped)
+                self._account(minute, survivors, dropped, self.rules_hook.last_alerts_dropped)
                 if not any(s.id == ev.id for s in survivors):
                     self.last_filtered_ids.add(ev.id)     # dropped, or held for a while
             else:
                 passed = True if self.filter is None else bool(self.filter(ev))
-                self._account(minute, [ev] if passed else [], 0 if passed else 1)
+                self._account(minute, [ev] if passed else [], 0 if passed else 1,
+                              0 if passed or ev.status != "firing" else 1)
                 if not passed:
                     self.last_filtered_ids.add(ev.id)
         if self.rules_hook is not None:
             # alerts a rule held (retune sustain, correlate window) come out when time passes
             survivors, dropped = self.rules_hook.advance(now)
-            self._account(int(now // 60 * 60), survivors, dropped)
+            self._account(int(now // 60 * 60), survivors, dropped, self.rules_hook.last_alerts_dropped)
         if self.inject and now >= self.inject["until_sim"]:
             self.inject = None
             self._inject_ended_real = self.time_fn()
@@ -262,13 +267,15 @@ class LiveSim:
                     log.exception("live listener failed")
         return out
 
-    def _account(self, minute: int, survivors: list[Event], dropped: int) -> None:
-        """Strip and counters: survivors reach a human, dropped events were filtered by rules."""
+    def _account(self, minute: int, survivors: list[Event], dropped: int, dropped_alerts: int) -> None:
+        """Counters: survivors reach a human, dropped events were filtered by rules. The strip
+        counts firing alerts only (passed and dropped), like the drop figure."""
+        passed_alerts = sum(1 for s in survivors if s.status == "firing")
         b = self.buckets.setdefault(minute, [0, 0])
-        b[0] += len(survivors)
-        b[1] += dropped
+        b[0] += passed_alerts
+        b[1] += dropped_alerts
         self.passed_total += len(survivors)
-        self.passed_alerts_total += sum(1 for s in survivors if s.status == "firing")
+        self.passed_alerts_total += passed_alerts
         self.filtered_total += dropped
         self.last_survivors.extend(survivors)
         for s in survivors:

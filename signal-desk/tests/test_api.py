@@ -42,11 +42,16 @@ def test_no_api_response_carries_ground_truth():
     with TestClient(main.app) as c:
         c.post("/api/reset")
         bodies = [c.post("/api/inject", json={"scenario_id": "core_uplink_down"}).text]
+        main.rules.activate({"kind": "suppress", "match": {"source": "zabbix", "host_glob": "*-test-vm-*",
+                                                                     "severity_in": ["minor", "warning", "info"]},
+                             "window_min": 1440, "max_per_window": 0}, "Test VM noise")
         for _ in range(5):                                            # 5 x 4 simulated minutes
             main.sim.clock.pause()
             main.sim.clock._sim_anchor += 240
             main.sim.step()
         assert main.sim.total > 0 and any(e.truth for e in main.sim.recent)   # truth exists server-side
+        drop = main.sim.snapshot()["drop"]                            # the strip's level step + since_ts
+        assert drop and drop["after"] is not None and drop["since_ts"]
         for path in ("/api/health", "/api/scenarios", "/api/proposals", "/api/rules", "/api/incidents",
                      "/api/budget"):
             r = c.get(path)

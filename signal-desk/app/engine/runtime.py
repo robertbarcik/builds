@@ -24,6 +24,7 @@ class RuleRuntime:
         self.hub = hub
         self._base: dict[str, dict[str, int]] = {}      # counts carried over from earlier engines
         self._carry: list[Ev] = []                      # released by a rebuild, emitted next call
+        self.last_alerts_dropped = 0                    # firing alerts the last process/advance removed
         self.engine = Engine(store.specs())
         sim.rules_hook = self
 
@@ -42,15 +43,17 @@ class RuleRuntime:
 
     # ---------------------------------------------------------- stream hook (LiveSim)
     def process(self, ev: Event) -> tuple[list[Event], int]:
-        before = self.engine.events_dropped
+        before, before_a = self.engine.events_dropped, self.engine.alerts_dropped
         outs = self._carry + self.engine.process(Ev.from_event(ev))
         self._carry = []
+        self.last_alerts_dropped = self.engine.alerts_dropped - before_a    # firing alerts only (strip)
         return [o.to_event() for o in outs], self.engine.events_dropped - before
 
     def advance(self, now: float) -> tuple[list[Event], int]:
-        before = self.engine.events_dropped
+        before, before_a = self.engine.events_dropped, self.engine.alerts_dropped
         outs = self._carry + self.engine.advance(now)
         self._carry = []
+        self.last_alerts_dropped = self.engine.alerts_dropped - before_a
         return [o.to_event() for o in outs], self.engine.events_dropped - before
 
     # ---------------------------------------------------------- payloads (no truth)

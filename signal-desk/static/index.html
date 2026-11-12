@@ -20,7 +20,9 @@ function desk() {
     filtered: 0,
     strip: [],
     markers: [],
-    drop: null,                      // {label, before, after, pct}: alerts/min since the last accepted rule, without vs with it
+    drop: null,                      // {label, before, after, pct, since_ts}: alerts/min since the last accepted rule, without vs with it
+    pctFlash: false,                 // one-time emphasis on the percentage when a new rule's figure first lands
+    flashedFor: '',
     tail: [],
     rules: [],                       // all rules (on and off) with live counts
     // all visible wording of the headline and the triage board in one place
@@ -31,6 +33,9 @@ function desk() {
       degraded: (reason) => reason === 'budget' ? 'AI paused (spend cap reached), rule-based grouping'
         : reason === 'no_model' ? 'No AI configured, rule-based grouping' : 'AI paused, rule-based grouping',
       emptyBoard: 'Nothing needs a human right now.',
+      // noise strip: legend and the level labels at the two ends of the step line
+      keyFilt: 'Filtered by rules', keyPass: 'Reach a human', keyLevel: 'Average per minute',
+      levelWithout: (v) => `without it ${v}`, levelWith: (v) => `with it ${v}`,
       cause: 'Likely cause', evidence: (n, t) => `Evidence: ${n} alert${n === 1 ? '' : 's'} from ${t} tool${t === 1 ? '' : 's'}`,
       more: (n) => `and ${n} more`, gotIt: 'Got it', writing: 'Writing a summary…',
       quiet: 'Quiet: no new alerts for a while', recovering: 'Recovering: most alerts have cleared',
@@ -248,6 +253,7 @@ function desk() {
     handle(m) {
       if (m.type === 'hello' || m.type === 'reset') {
         if (m.rules) this.rules = m.rules;
+        if (m.drop && m.drop.since_ts) this.flashedFor = m.drop.since_ts;   // no flash for a figure already on screen
         this.applyTick(m);
         this.tail = m.tail || [];
         if (m.incidents) this.incidents = m.incidents;
@@ -304,6 +310,13 @@ function desk() {
       this.strip = m.strip || [];
       this.markers = m.markers || [];
       this.drop = m.drop || null;
+      const d = this.drop;
+      // flash once, the first time the figure is on screen (accepting happens on the Proposals tab)
+      if (d && d.pct != null && d.since_ts && this.flashedFor !== d.since_ts && this.tab === 'now') {
+        this.flashedFor = d.since_ts;
+        this.pctFlash = true;
+        setTimeout(() => { this.pctFlash = false; }, 2600);
+      }
       if (m.inject) {
         const wasActive = this.inject && this.inject.active;
         this.inject = m.inject;
@@ -354,18 +367,40 @@ function desk() {
     },
 
     // ---- noise strip
+    rate(v) { return `${v >= 10 ? Math.round(v) : Math.round(v * 10) / 10}/min`; },
     get dropText() {
       const d = this.drop;
       if (!d) return '';
-      const n = (v) => v >= 10 ? Math.round(v) : Math.round(v * 10) / 10;
       if (d.after == null) return `“${d.label}” is live: measuring what it removes…`;
-      const pct = d.pct == null ? '' : ` (${d.pct > 0 ? '+' : d.pct < 0 ? '−' : ''}${Math.abs(d.pct)}%)`;
-      return `Alerts reaching a human since “${d.label}”: ${n(d.before)}/min without it → ${n(d.after)}/min with it${pct}`;
+      return `Alerts reaching a human since “${d.label}”: ${this.rate(d.before)} without it → ${this.rate(d.after)} with it`;
+    },
+    get dropPct() {
+      const d = this.drop;
+      if (!d || d.after == null || d.pct == null) return '';
+      return `${d.pct > 0 ? '+' : d.pct < 0 ? '−' : ''}${Math.abs(d.pct)}%`;
     },
     get stripMax() {
-      return Math.max(10, ...this.strip.map(b => b.passed + b.filtered));
+      const d = this.drop;
+      return Math.max(6, d && d.before != null ? d.before : 0, ...this.strip.map(b => b.passed + b.filtered));
     },
     pct(n) { return (100 * n / this.stripMax).toFixed(1) + '%'; },
+    // the step line: the drop figure's two engine numbers drawn as levels, stepping down where the
+    // latest accepted rule went live (no step when that minute has scrolled off the strip)
+    get level() {
+      const d = this.drop;
+      const n = this.strip.length;
+      if (!d || d.after == null || d.before == null || !n) return null;
+      const i = d.since_ts ? this.strip.findIndex(b => b.t.slice(0, 16) === d.since_ts.slice(0, 16)) : -1;
+      const x = i < 0 ? 0 : 100 * i / n;
+      const y = (v) => +(100 - 100 * v / this.stripMax).toFixed(2);
+      const yb = y(d.before), ya = y(d.after);
+      return {
+        x, yb, ya, stepped: i >= 0,
+        path: i >= 0 ? `M0 ${yb} H${x} V${ya} H100` : `M0 ${ya} H100`,
+        ghost: `M${x} ${yb} H100`,
+        before: this.copy.levelWithout(this.rate(d.before)), after: this.copy.levelWith(this.rate(d.after)),
+      };
+    },
     markerRow(mk) {
       // markers within 4 minutes of an earlier one stack their labels downwards instead of overlapping
       const vis = this.markers.filter(m => this.markerLeft(m) !== null);
@@ -373,6 +408,13 @@ function desk() {
       let row = 0;
       for (let j = i - 1; j >= 0 && Date.parse(mk.ts) - Date.parse(vis[j].ts) < 4 * 60000; j--) row++;
       return Math.min(row, 4);
+    },
+    markerRoom(mk) {
+      // an earlier label on the same row stops (ellipsis) where the next marker's label begins
+      const vis = this.markers.filter(m => this.markerLeft(m) !== null);
+      const i = vis.indexOf(mk), row = this.markerRow(mk);
+      const nxt = vis.slice(i + 1).find(m => this.markerRow(m) === row);
+      return nxt ? `width: ${(parseFloat(this.markerLeft(nxt)) - parseFloat(this.markerLeft(mk))).toFixed(2)}%` : '';
     },
     markerLeft(mk) {
       const t = mk.ts.slice(0, 16);
@@ -479,20 +521,32 @@ function desk() {
     <div class="panel-head">
       <h2 class="section-title" id="strip-title">Alerts per minute</h2>
       <div class="legend">
-        <span><i class="key-filt"></i>Filtered by rules</span>
-        <span><i class="key-pass"></i>Reach a human</span>
+        <span><i class="key-filt"></i><span x-text="copy.keyFilt">Filtered by rules</span></span>
+        <span><i class="key-pass"></i><span x-text="copy.keyPass">Reach a human</span></span>
+        <span :class="{ off: !level }"><i class="key-level"></i><span x-text="copy.keyLevel">Average per minute</span></span>
       </div>
     </div>
-    <p class="drop" :hidden="!drop" x-cloak role="status" x-text="dropText"></p>
+    <p class="drop" role="status"><span x-text="dropText"></span><b class="drop-pct" :class="{ flash: pctFlash }" :hidden="!dropPct" x-text="dropPct"></b></p>
     <div class="strip" role="img" aria-label="Alerts per simulated minute over the last 30 minutes">
       <template x-for="(b, i) in strip" :key="b.t">
-        <div class="bar" :class="{ now: i === strip.length - 1 }" :title="`${clock(b.t)}  ${b.passed} passed, ${b.filtered} filtered`">
+        <div class="bar" :class="{ now: i === strip.length - 1 }" :title="`${clock(b.t)}  ${b.passed} reached a human, ${b.filtered} filtered`">
           <div class="pass" :style="`height: ${pct(b.passed)}`"></div>
           <div class="filt" :style="`height: ${pct(b.filtered)}`"></div>
         </div>
       </template>
       <template x-for="mk in markers" :key="mk.ts + mk.label">
-        <div class="marker" x-show="markerLeft(mk) !== null" :style="`left: ${markerLeft(mk)}`"><span :style="`top: ${markerRow(mk) * 19 - 2}px`" x-text="mk.label"></span></div>
+        <div class="marker" :class="{ room: markerRoom(mk), flip: !markerRoom(mk) && parseFloat(markerLeft(mk)) > 55 }" :hidden="markerLeft(mk) === null" :style="`left: ${markerLeft(mk)}; ${markerRoom(mk)}`"><span :style="`top: ${markerRow(mk) * 19 - 2}px`" x-text="mk.label"></span></div>
+      </template>
+      <svg class="level" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" :class="{ off: !level }">
+        <path class="ghost" :d="level ? level.ghost : ''" :hidden="!(level && level.stepped)" vector-effect="non-scaling-stroke"></path>
+        <path class="halo" :d="level ? level.path : ''" vector-effect="non-scaling-stroke"></path>
+        <path class="line" :d="level ? level.path : ''" vector-effect="non-scaling-stroke"></path>
+      </svg>
+      <template x-if="level">
+        <div class="level-tags" aria-hidden="true">
+          <span class="lv lv-before" :hidden="!level.stepped" :style="`bottom: calc(${100 - level.yb}% + 4px)`" x-text="level.before"></span>
+          <span class="lv lv-after" :style="`bottom: calc(${100 - level.ya}% + 4px)`" x-text="level.after"></span>
+        </div>
       </template>
     </div>
     <div class="strip-axis"><span>30 min ago</span><span>now</span></div>

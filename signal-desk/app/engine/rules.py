@@ -675,6 +675,10 @@ class Engine:
     def events_dropped(self) -> int:
         return sum(st.events_dropped for st in self.stages)
 
+    @property
+    def alerts_dropped(self) -> int:
+        return sum(st.alerts_dropped for st in self.stages)
+
     def stats(self) -> dict[str, dict[str, int]]:
         """Per rule: firing alerts removed and events created, cumulative."""
         return {st.rid: {"filtered": st.alerts_dropped, "raised": st.raised}
