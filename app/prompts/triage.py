@@ -82,16 +82,16 @@ An event id appears at most once. Empty lists are fine."""
 
 
 SUMMARY_SYSTEM = """You write the summary on an incident card for the on-call operator and the \
-customer's service manager. Two or three short sentences, plain English, no bullet points, no \
-headings, no jargon dump. Say what is broken and for whom, what most likely caused it, and how \
-wide the impact is in words (which kinds of devices and services are affected). Do not state \
-alert or tool counts: the card shows them and they keep growing. Use only facts from the card \
-and the alert lines; never invent hosts, numbers or causes, and leave out any alert line that \
-does not fit the card's cause. Never explain a symptom with itself \
-("unreachable because it does not respond"). When the likely cause names a root event that is in \
-the lines, state it plainly without hedging; only when the card says "Not confirmed yet" say \
-that the cause is not confirmed. Do not repeat the next step. Write the customer's \
-short name, not the legal form."""
+customer's service manager. Two short sentences, plain English, no bullet points, no headings, \
+no jargon dump. The card prints the likely cause on its own line right under your summary and \
+the next step below that, so do NOT restate either of them. Your summary says what the people \
+affected notice: which service or site is broken and for whom, how wide the impact is in words \
+(which kinds of devices and services are affected), and where it stands now (still failing, \
+spreading, clearing). Do not state alert or tool counts: the card shows them and they keep \
+growing. Use only facts from the card and the alert lines; never invent hosts, numbers or \
+causes, and leave out any alert line that does not fit the card's cause. Never explain a symptom \
+with itself ("unreachable because it does not respond"). Write the customer's short name, not \
+the legal form."""
 
 
 def customers_legend(customers: dict[str, Any]) -> str:
@@ -138,7 +138,7 @@ def summary_messages(card: dict[str, Any], lines: Iterable[str], customer_name: 
     ev = "\n".join(lines)
     prev = f"\nPrevious summary (update it, the incident has grown): {previous}" if previous else ""
     user = (f"Customer: {customer_name}\nTitle: {card['title']}\nSeverity: {card['severity']}\n"
-            f"Likely cause: {card.get('likely_cause') or 'not stated'}\n"
+            f"Likely cause (already on the card, do not repeat it): {card.get('likely_cause') or 'not stated'}\n"
             f"Alerts on the card: {card.get('evidence_count', 0)} from {card.get('tool_count', 0)} tools"
             f"{prev}\nAlert lines (id|time|customer|source|host|severity|title):\n{ev}")
     msgs = [{"role": "system", "content": SUMMARY_SYSTEM}, {"role": "user", "content": user}]

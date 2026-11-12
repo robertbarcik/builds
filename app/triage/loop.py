@@ -14,7 +14,10 @@ Every `caps.triage_interval_s` real seconds (8 s), while at least one browser is
 4. Age the board in SIMULATED time: no new evidence for `quiet_after_min` (10) and at least half
    of its alerts resolved, or no new evidence for `quiet_unresolved_after_min` (30) at all ->
    `quiet` (dimmed, not counted as "needs a human"; green "recovering" once 80 % have resolved,
-   so an outage that is still down does not fade while its alerts keep firing); quiet for
+   so an outage that is still down does not fade while its alerts keep firing). A card whose
+   alerts have ALL resolved goes quiet after only `recovered_quiet_min` (3) without new evidence,
+   and a new incident whose alerts have all resolved already (a blip that cleared within the
+   tick, typically a branch router back after a few minutes) opens no card at all. Quiet for
    `expire_after_min` (45, i.e. ~45 real s)
    -> the card leaves the board. The board holds at most `max_cards` (6) cards; beyond that only
    major/critical incidents may open, retiring the oldest quiet (then oldest minor) card.
@@ -109,6 +112,43 @@ def _similar(a: str, b: str) -> bool:
     return len(wa & wb) / len(wa | wb) >= 0.6
 
 
+def _sentences(text: str) -> list[str]:
+    return [s.strip() for s in re.split(r"(?<=[.!?])\s+", text.strip()) if s.strip()]
+
+
+def repeats(sentence: str, cause: str) -> bool:
+    """True if a summary sentence only restates the card's likely cause."""
+    ws, wc = _words(sentence), _words(cause)
+    if not ws or not wc:
+        return False
+    inter = len(ws & wc)
+    return inter / len(ws | wc) >= 0.5 or inter / len(wc) >= 0.75
+
+
+def drop_repeated_cause(summary: str, cause: str) -> str:
+    """The card prints the likely cause right under the summary: take out summary sentences that
+    say the same thing again. If every sentence repeats it, keep the one that repeats it least."""
+    sents = _sentences(summary)
+    if not sents or not cause:
+        return summary
+    keep = [s for s in sents if not repeats(s, cause)]
+    if keep:
+        return " ".join(keep)
+    wc = _words(cause)
+    return min(sents, key=lambda s: len(_words(s) & wc) / max(1, len(_words(s) | wc)))
+
+
+def fallback_summary(c: "Card", customer_short: str) -> str:
+    """Deterministic card text when the summary call fails (never a copy of the likely cause)."""
+    hosts = len({e.host for e in c.events})
+    tools = len({e.source for e in c.events})
+    since = min((e.ts for e in c.events), default="")
+    who = f" at {customer_short}" if customer_short else ""
+    return (f"Alerts from {tools} tool{'s' if tools != 1 else ''} on {hosts} host{'s' if hosts != 1 else ''}"
+            f"{who} since {_local_hhmm(since) if since else 'just now'}. The written summary is not "
+            f"available right now; the evidence lines below are complete.")
+
+
 def _clip(s: Any, n: int) -> str:
     s = re.sub(r"\s+", " ", str(s or "")).strip()
     return s if len(s) <= n else s[: n - 1].rstrip() + "…"
@@ -152,6 +192,7 @@ class TriageLoop:
         self.max_lines = int(caps.get("triage_max_lines", 60))
         self.quiet_after = float(t.get("quiet_after_min", 10)) * 60
         self.quiet_unresolved_after = float(t.get("quiet_unresolved_after_min", 30)) * 60
+        self.recovered_after = float(t.get("recovered_quiet_min", 3)) * 60
         self.expire_after = float(t.get("expire_after_min", 45)) * 60
         self.ack_keep = float(t.get("ack_keep_min", 120)) * 60
         self.max_cards = int(t.get("max_cards", 6))
@@ -300,8 +341,10 @@ class TriageLoop:
                     c.removed = True
                 continue
             cleared = bool(c.keys) and len(c.resolved & c.keys) >= 0.5 * len(c.keys)
+            recovered = bool(c.keys) and c.keys <= c.resolved          # every alert on it has cleared
             if c.inc.status == "open" and (idle >= self.quiet_unresolved_after
-                                           or (idle >= self.quiet_after and cleared)):
+                                           or (idle >= self.quiet_after and cleared)
+                                           or (idle >= self.recovered_after and recovered)):
                 c.inc.status = "quiet"
                 c.quiet_since = now
                 self._upsert(c)
@@ -518,6 +561,12 @@ class TriageLoop:
             if not evs:
                 counts["new_dropped"] += 1
                 continue
+            # a blip that has already cleared (every alert in it resolved, e.g. a branch router
+            # that was back within minutes) needs nobody: no card
+            if all(self._resolved_at.get((e.source, e.host, e.check), 0.0) >= parse_iso(e.ts) for e in evs):
+                counts["new_recovered"] += 1
+                log.info("not opened (already recovered): %s", _clip(n.get("title") or evs[0].title, 90))
+                continue
             sev = str(n.get("severity", "")).strip().lower()
             if sev not in INCIDENT_SEVERITIES:
                 sev = max((e.severity for e in evs), key=lambda s: SEV_RANK[s])
@@ -591,10 +640,11 @@ class TriageLoop:
             async for piece in stream:
                 text += piece
                 self.hub.publish("incident_delta", {"id": c.id, "delta": piece})
-            c.inc.summary = _clip(stream.text, 600)
+            c.inc.summary = (_clip(drop_repeated_cause(stream.text, c.inc.likely_cause), 600)
+                             or c.inc.summary or fallback_summary(c, cust.short if cust else ""))
         except (LLMError, BudgetRefused) as e:
             log.warning("summary for %s failed: %s", c.id, getattr(e, "kind", getattr(e, "reason", e)))
-            c.inc.summary = c.inc.summary or c.inc.likely_cause
+            c.inc.summary = c.inc.summary or fallback_summary(c, cust.short if cust else "")
         c.summary_state = "done"
         c.summarised_count, c.summarised_rank, c.summarised_at = count_at, rank_at, self.time_fn()
         if c.visible:
@@ -647,6 +697,9 @@ class TriageLoop:
             routine = fam in ("capacity", "security", "other")
             if not (serious or (len(evs) >= 3 and not routine)) or opened >= self.max_new:
                 continue
+            if all(self._resolved_at.get((e.source, e.host, e.check), 0.0) >= parse_iso(e.ts) for e in evs):
+                continue                                   # already recovered: nobody needs to act
+
             sev = max((e.severity for e in evs), key=lambda s: SEV_RANK[s])
             if not self._make_room(sev):
                 continue

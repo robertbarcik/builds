@@ -51,6 +51,8 @@ caps:
 triage:
   quiet_after_min: 10        # no new evidence for this long and half its alerts resolved -> "quiet"
   quiet_unresolved_after_min: 30   # no new evidence for this long -> "quiet" even if still firing
+  recovered_quiet_min: 3     # every alert on a card resolved and nothing new for this long -> "quiet"
+                             # (a new incident whose alerts have all resolved already opens no card)
   expire_after_min: 45       # quiet this long -> card leaves the board (~45 real s)
   ack_keep_min: 120          # a dismissed card still collects its alerts this long (no card)
   max_cards: 6               # board cap; beyond it only major/critical incidents may open

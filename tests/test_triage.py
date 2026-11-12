@@ -13,7 +13,7 @@ from app.models import Event, Truth
 from app.prompts.triage import PromptLeak, assert_prompt_clean, triage_messages
 from app.sim.catalog import CUSTOMERS, iso
 from app.sse import Hub
-from app.triage.loop import TriageLoop, attach_entries, dealias, family_of
+from app.triage.loop import TriageLoop, attach_entries, dealias, drop_repeated_cause, family_of, repeats
 
 CFG = load_config()
 T0 = 1_762_767_000.0                       # 2026-11-10T09:30:00Z
@@ -205,15 +205,50 @@ def test_quiet_then_expiry_then_reopen():
 def test_resolve_seen_before_the_card_still_counts():
     tl, sim, hub, _ = loop_with(FakeLLM())
     fire = ev(1, host="bva-br-verona-rt01", title="Host bva-br-verona-rt01 UNREACH")
+    other = ev(3, sec=30, source="prtg", check="ping", host="bva-br-verona-rt01", title="Ping Down")
     res = ev(2, sec=240, host="bva-br-verona-rt01", title="Resolved: Host bva-br-verona-rt01 UNREACH",
              status="resolved")
-    feed(tl, [fire, res])
+    feed(tl, [fire, other, res])
     batch, _ = tl._select(T0 + 300)                        # the resolve is noted before any card exists
     tl.apply_result({"new": [{"customer": "nordhafen", "title": "Branch router down",
-                              "event_ids": ["E1"]}]}, batch)
+                              "event_ids": ["E1", "E3"]}]}, batch)
+    card = next(iter(tl.cards.values()))
+    assert ("checkmk", "bva-br-verona-rt01", "host_unreach") in card.resolved
     tl._age(T0 + 11 * 60)
-    (card,) = tl.board()
-    assert card["status"] == "quiet" and card["recovering"]
+    (c,) = tl.board()
+    assert c["status"] == "quiet" and not c["recovering"]           # half cleared: quiet, not recovering
+
+
+def test_blip_that_already_cleared_opens_no_card():
+    """A branch router back within minutes: the model may call it an incident, the board does not."""
+    tl, sim, hub, _ = loop_with(FakeLLM())
+    fire = ev(1, source="prtg", check="ping", host="nhl-br-kiel-rt01", title="Ping Down", severity="critical")
+    res = ev(2, sec=240, source="prtg", check="ping", host="nhl-br-kiel-rt01", title="Ping Up", status="resolved")
+    feed(tl, [fire, res])
+    batch, _ = tl._select(T0 + 300)
+    r = tl.apply_result({"new": [{"customer": "nordhafen", "title": "Branch router nhl-br-kiel-rt01 down",
+                                  "severity": "major", "event_ids": ["E1"]}]}, batch)
+    assert r["new_recovered"] == 1 and tl.board() == [] and tl.open_count() == 0
+
+
+def test_recovered_card_leaves_the_headline_count_quickly():
+    tl, sim, hub, _ = loop_with(FakeLLM())
+    tl.apply_result({"new": [{"customer": "nordhafen", "title": "Branch router down", "severity": "major",
+                              "event_ids": ["E1", "E2"]}]},
+                    [ev(1, source="prtg", check="ping", host="nhl-br-kiel-rt01", title="Ping Down"),
+                     ev(2, source="solarwinds", check="node_down", host="nhl-br-kiel-rt01", title="Node down")])
+    assert tl.open_count() == 1
+    feed(tl, [ev(3, sec=200, source="prtg", check="ping", host="nhl-br-kiel-rt01", title="Ping Up",
+                 status="resolved")])
+    tl._select(T0 + 240)
+    tl._age(T0 + 6 * 60)
+    assert tl.open_count() == 1                                      # one of two still down: stays
+    feed(tl, [ev(4, sec=300, source="solarwinds", check="node_down", host="nhl-br-kiel-rt01", title="Node up",
+                 status="resolved")])
+    tl._select(T0 + 320)
+    tl._age(T0 + 6 * 60)                                             # all cleared, 6 min idle (>= 3)
+    (c,) = tl.board()
+    assert tl.open_count() == 0 and c["status"] == "quiet" and c["recovering"]
 
 
 def test_board_cap_minor_cannot_displace():
@@ -272,6 +307,48 @@ def test_summary_streams_deltas_then_upsert():
     assert "incident_upsert" in types and types.count("incident_delta") >= 3
     card = next(iter(tl.cards.values()))
     assert card.inc.summary.startswith("The core uplink failed") and card.summary_state == "done"
+
+
+def test_summary_does_not_repeat_the_likely_cause():
+    cause = "Interface Te1/1/1 on nhl-core-sw-01 went down, cutting off everything behind it."
+    s = ("Interface Te1/1/1 on nhl-core-sw-01 went down and cut off everything behind it. "
+         "Nordhafen's branch sites, Windows servers and the customer portal are unreachable and still down.")
+    out = drop_repeated_cause(s, cause)
+    assert out.startswith("Nordhafen's branch sites") and "went down" not in out
+    assert drop_repeated_cause("Branch offices cannot reach the ERP.", cause) == "Branch offices cannot reach the ERP."
+    assert drop_repeated_cause(cause, cause) == cause                  # never left empty
+    assert not repeats("The portal is down for customers.", cause)
+
+
+def test_summary_prompt_tells_the_model_not_to_restate_the_cause():
+    from app.prompts.triage import SUMMARY_SYSTEM, summary_messages
+    assert "do NOT restate" in SUMMARY_SYSTEM
+    msgs = summary_messages({"title": "t", "severity": "major", "likely_cause": "c"}, ["x"], "Nordhafen")
+    assert "do not repeat it" in msgs[1]["content"]
+
+
+def test_streamed_summary_is_deduplicated_and_failure_has_its_own_text():
+    cause = "Te1/1/1 on nhl-core-sw-01 went down, cutting off everything behind it"
+    llm = FakeLLM([{"new": [{"customer": "nordhafen", "title": "Core uplink down", "severity": "critical",
+                             "likely_cause": cause, "event_ids": ["e1"]}]}],
+                  summary="Te1/1/1 on nhl-core-sw-01 went down, cutting off everything behind it. "
+                          "Servers at Nordhafen are unreachable.")
+    tl, *_ = loop_with(llm)
+    feed(tl, [ev(1)])
+    run(tl.tick())
+    card = next(iter(tl.cards.values()))
+    assert card.inc.summary == "Servers at Nordhafen are unreachable."
+
+    class Failing(FakeLLM):
+        def stream_text(self, role, messages, **kw):
+            raise LLMError("timeout")
+    llm2 = Failing([{"new": [{"customer": "nordhafen", "title": "Core uplink down", "severity": "critical",
+                              "likely_cause": cause, "event_ids": ["e1"]}]}])
+    tl2, *_ = loop_with(llm2)
+    feed(tl2, [ev(1)])
+    run(tl2.tick())
+    c2 = next(iter(tl2.cards.values()))
+    assert c2.inc.summary and c2.inc.summary != cause and "Alerts from 1 tool" in c2.inc.summary
 
 
 # ---------------------------------------------------------------- degraded mode
