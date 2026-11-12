@@ -92,8 +92,11 @@ Budget your calls: about 2 for the overview, 4 to 5 to check hypotheses, 5 to 6 
 submit.
 7. Finish with ONE submit_proposals call. Each proposal: a title of at most 8 words, the rule, and \
 reasoning of two or three plain sentences an experienced operator would accept: what the alerts \
-are, the evidence from the data (with a number), and why the rule is safe. No jargon dump, no \
-markdown.
+are, the evidence from the data in words (which hosts, what pattern, how it relates to the \
+tickets), and why the rule is safe. Do NOT quote counts or percentages of alerts, incidents, \
+tickets or warnings: the rule engine prints its own backtest figures right next to your text, and \
+sentences with such numbers are removed. Values a rule is about (a CPU percentage, a threshold, \
+minutes) are fine. No jargon dump, no markdown.
 
 Between tool calls you may write one short sentence about what you are checking next; keep it \
 plain, no lists, no JSON.

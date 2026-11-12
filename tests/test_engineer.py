@@ -16,6 +16,7 @@ from app.config import load_config
 from app.engine.backtest import history_from_dicts
 from app.engine.rules import validate
 from app.engine.store import seed_rules
+from app.engineer import agent as A
 from app.engineer import tools as T
 from app.engineer.agent import EngineerRefused, EngineerService, rule_identity
 from app.llm.budget import BudgetRefused
@@ -547,6 +548,37 @@ def test_server_side_filtering_and_model_numbers_ignored(hist, tmp_path):
     assert keep[0].backtest.alerts_before == 15 and keep[0].backtest.alerts_saved == 4
     late = asyncio.run(svc._finalise([_prop(TOO_LATE, "Warns at the failure")], active, origin="live"))
     assert late == [] and "Warns at the failure: warns too late" in svc.stats["dropped"][0]
+
+
+@pytest.mark.parametrize("text,claim", [
+    ("It produced 1,240 alerts last month.", True),
+    ("Only 3 of 42 incidents were near it.", True),
+    ("This removes 48.6% of all alerts.", True),
+    ("It fired 212 times on nhl-test-vm-03.", True),
+    ("All 2382 'Health Service unavailable' alerts come from three hosts.", True),
+    ("The backtest raised 8 warnings, 4 of them right.", True),
+    ("Values sit at 80-87% and clear within 4 minutes.", False),
+    ("Keep alerts above 90% for 5 minutes.", False),
+    ("Host nhl-win-03 and Te1/0/9 flap.", False),
+    ("Within 30 minutes of the alerts nothing happens.", False),
+])
+def test_numeric_claims_detected(text, claim):
+    assert (A.scrub_numeric_claims(text) == "") is claim
+
+
+def test_reasoning_keeps_no_count_that_could_contradict_the_engine(hist, tmp_path):
+    svc = _service(FakeLLM([]), hist, tmp_path)
+    why = ("The test VM reports its agent down every hour. It produced 999 alerts, 100% of the family. "
+           "Values above 90% are kept, so nothing critical is touched.")
+    (p,) = asyncio.run(svc._finalise([_prop(TESTVM, "Test VM", reasoning=why)], [], origin="live"))
+    assert p.reasoning == ("The test VM reports its agent down every hour. Values above 90% are kept, so nothing "
+                           "critical is touched.")
+    assert "999" not in json.dumps(svc.proposal_payload(p))
+    assert p.backtest.alerts_saved == 4                     # the visitor's numbers: the engine's
+
+
+def test_engineer_prompt_forbids_quoting_counts():
+    assert "Do NOT quote counts or percentages" in engineer_messages(14, [])[0]["content"]
 
 
 def test_duplicate_within_one_submission(hist, tmp_path):

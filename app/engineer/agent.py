@@ -106,6 +106,28 @@ def clean_thought(text: str) -> Optional[str]:
     return first
 
 
+# a number used as a count or share of alerts, incidents, tickets, warnings ...: "1,240 alerts",
+# "3 of 42 incidents", "48.6% of all alerts", "fired 212 times". Values a rule is about ("above 90%",
+# "within 30 minutes", host names like nhl-win-03) do not match.
+_COUNT_NOUNS = (r"alerts?|incidents?|tickets?|warnings?|events?|notifications?|occurrences?|times|"
+                r"false alarms?|episodes?|outages?|pages?|firings?")
+_NUM = r"(?<![\w/.-])\d[\d,.]*"
+_UNIT = r"(?!\s*(?:%|percent|ms|min|minutes?|h|hours?|days?|s|sec|seconds?|weeks?|GB|MB|TB)\b)"
+_NUMERIC_CLAIM = re.compile(
+    rf"{_NUM}\s*(?:%|percent)\s+of\b"                                    # "48.6% of ..."
+    # "3 of 42 incidents", "2382 'Health Service unavailable' alerts"; a number followed by a unit
+    # is a value or a duration, not a count
+    rf"|{_NUM}{_UNIT}(?:\s+(?:of|out of)\s+{_NUM})?(?:\s+[\w'\"“”‘’*/.-]+){{0,5}}?\s+(?:{_COUNT_NOUNS})\b",
+    re.IGNORECASE)
+
+
+def scrub_numeric_claims(text: str) -> str:
+    """Remove the sentences of a model's reasoning that quote counts or shares: the visitor gets
+    those numbers from the engine's backtest only, so the prose can never contradict them."""
+    sents = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text.strip()) if s.strip()]
+    return " ".join(s for s in sents if not _NUMERIC_CLAIM.search(s))
+
+
 def drop_reason(rule: Any, bt: BacktestResult) -> Optional[str]:
     """Why the server drops a proposal after its own backtest (None = keep)."""
     if bt.incidents_hidden > 0:
@@ -484,7 +506,7 @@ class EngineerService:
                 dropped.append(f"{title}: {why}")
                 continue
             seen.add(ident)
-            reasoning = re.sub(r"\s+", " ", str(c.get("reasoning") or "")).strip()[:600]
+            reasoning = scrub_numeric_claims(re.sub(r"\s+", " ", str(c.get("reasoning") or "")).strip())[:600]
             draft = None
             nd = c.get("native_draft")
             if origin == "saved" and isinstance(nd, dict):

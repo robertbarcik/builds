@@ -622,7 +622,7 @@ function desk() {
               <span class="prop-state" x-show="p.status === 'rejected'" x-text="copy.eng.rejected"></span>
             </div>
             <h3 class="prop-title" x-text="p.title"></h3>
-            <p class="prop-why" x-text="p.reasoning"></p>
+            <p class="prop-why" x-show="p.reasoning" x-text="p.reasoning"></p>
             <p class="prop-rule"><span x-text="copy.eng.ruleSays"></span> <span x-text="p.description"></span></p>
             <div class="prop-stats">
               <template x-for="s in stats(p)" :key="s.label">
