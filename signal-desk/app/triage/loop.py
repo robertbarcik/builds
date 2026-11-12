@@ -177,6 +177,10 @@ class Card:
     summarised_rank: int = -1
     summarised_at: float = -1e9               # real time
     summary_state: str = "pending"            # pending | streaming | done
+    # who wrote the visible text (title, summary, cause, next step): "ai" (the triage model) or
+    # "rule_based" (degraded keyword grouping). Only this drives the "Rule-based" chip; it is
+    # set where the text is written, never inferred from the mode the loop is in later.
+    text_by: str = "ai"
     removed: bool = False
 
     @property
@@ -254,6 +258,12 @@ class TriageLoop:
                 break
         cust = CUSTOMERS.get(c.inc.customer or "")
         recovering = bool(c.keys) and c.inc.status == "quiet" and len(c.resolved & c.keys) >= 0.8 * len(c.keys)
+        # recovering: the summary was written while the alerts were firing and may still say
+        # "no recovery yet"; the UI puts a templated status line from this time above it and dims it
+        cleared = None
+        if recovering:
+            times = [self._resolved_at[k] for k in c.resolved & c.keys if k in self._resolved_at]
+            cleared = iso(max(times)) if times else iso(c.last_evidence)
         return {
             **c.inc.model_dump(exclude={"evidence"}),
             "customer_name": cust.name if cust else (c.inc.customer or ""),
@@ -264,6 +274,8 @@ class TriageLoop:
             "more": max(0, c.evidence_total - len(preview)),
             "summary_state": c.summary_state,
             "recovering": recovering,
+            "cleared_ts": cleared,
+            "rule_based": c.text_by == "rule_based",
         }
 
     def board(self) -> list[dict[str, Any]]:
@@ -543,6 +555,8 @@ class TriageLoop:
             evs = keep
             if evs:
                 self._add_evidence(c, evs)
+                if c.text_by == "rule_based":
+                    self._degraded_text(c)      # its templated text stays templated, counts current
                 touched[c.id] = c
                 counts["attached"] += len(evs)
                 # severity can only rise, and only with new evidence
@@ -586,6 +600,8 @@ class TriageLoop:
                         and _similar(c.inc.title, title)), None)
             if dup is not None:
                 self._add_evidence(dup, evs)
+                if dup.text_by == "rule_based":
+                    self._degraded_text(dup)
                 touched[dup.id] = dup
                 counts["merged"] += 1
                 log.info("merged new '%s' into %s (%d alerts)", title, dup.id, len(evs))
@@ -682,7 +698,10 @@ class TriageLoop:
         c.inc.likely_cause = f"Not analysed. Most frequent alert: “{_clip(top_title, 90)}”."
         c.inc.next_step = f"Start with {top_host}. Call {fam[2]} if this is not a known issue."
         sev = max((e.severity for e in c.events), key=lambda s: SEV_RANK[s])
-        c.inc.severity = sev if sev in INCIDENT_SEVERITIES else "minor"
+        sev = sev if sev in INCIDENT_SEVERITIES else "minor"
+        if SEV_RANK[sev] > SEV_RANK[c.inc.severity]:         # severity only rises
+            c.inc.severity = sev
+        c.text_by = "rule_based"
 
     def _degraded_triage(self, batch: list[Event], now: float) -> None:
         opened = 0
@@ -695,7 +714,7 @@ class TriageLoop:
                                and c.inc.origin == "llm" and hosts & {e.host for e in c.events}), None)
             if target is not None:
                 self._add_evidence(target, evs)
-                if target.inc.origin == "degraded":
+                if target.text_by == "rule_based":
                     self._degraded_text(target)
                 if target.visible:
                     self._upsert(target)

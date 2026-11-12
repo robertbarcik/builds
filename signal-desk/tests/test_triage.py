@@ -249,6 +249,19 @@ def test_recovered_card_leaves_the_headline_count_quickly():
     tl._age(T0 + 6 * 60)                                             # all cleared, 6 min idle (>= 3)
     (c,) = tl.board()
     assert tl.open_count() == 0 and c["status"] == "quiet" and c["recovering"]
+    # the UI's templated status line: cleared at the LATEST resolve on the card
+    assert c["cleared_ts"] == iso(T0 + 300)
+
+
+def test_open_and_quiet_unrecovered_cards_have_no_cleared_line():
+    tl, sim, hub, _ = loop_with(FakeLLM())
+    tl.apply_result({"new": [{"customer": "nordhafen", "title": "Uplink", "severity": "major",
+                              "event_ids": ["E1"]}]}, [ev(1)])
+    (c,) = tl.board()
+    assert c["cleared_ts"] is None and not c["recovering"]
+    tl._age(T0 + 31 * 60)                                            # quiet, still firing
+    (c,) = tl.board()
+    assert c["status"] == "quiet" and not c["recovering"] and c["cleared_ts"] is None
 
 
 def test_board_cap_minor_cannot_displace():
@@ -384,6 +397,62 @@ def test_degraded_after_two_failures_then_probe_resumes():
     llm.results = [{"attach": [{"incident_id": card.id, "event_ids": ["e1"]}]}]
     out = run(tl.tick())
     assert out.get("probe") and not tl.degraded and card.evidence_total == 4
+
+
+def test_rule_based_chip_only_on_cards_whose_text_is_templated():
+    """An AI card keeps its AI text and no chip through a degraded episode (alerts attached to it
+    by rule-based grouping, going quiet, AI resuming); a rule-based card keeps the chip and its
+    templated text stays current when the AI later attaches alerts to it."""
+    cert = dict(source="checkmk", check="https_cert", host="nhl-web-02", severity="major",
+                title="HTTPS certificate on nhl-web-02 EXPIRED")
+    llm = FakeLLM([{"new": [{"customer": "nordhafen", "title": "Expired HTTPS certificate on nhl-web-02",
+                             "severity": "major", "likely_cause": "The certificate expired.",
+                             "next_step": "Renew it.", "event_ids": ["e1"]}]},
+                   LLMError("timeout"), LLMError("timeout")],
+                  summary="The portal is down for customers and there is no recovery yet.")
+    tl, sim, hub, real = loop_with(llm)
+    feed(tl, [ev(1, **cert)])
+    run(tl.tick())
+    (ai,) = tl.cards.values()
+    assert ai.inc.origin == "llm" and tl.card_payload(ai)["rule_based"] is False
+    ai_summary = ai.inc.summary
+    # two failures -> degraded; the next cert alert on the same host joins the AI card,
+    # unrelated reachability alerts open a rule-based card
+    for k in (2, 3):
+        sim.clock.t += 8
+        real.t += 8
+        feed(tl, [ev(k * 10, sec=8 * k, **cert),
+                  ev(k * 10 + 1, sec=8 * k, host="nhl-win-01", title="Host nhl-win-01 UNREACH"),
+                  ev(k * 10 + 2, sec=8 * k, host="nhl-win-02", title="Host nhl-win-02 UNREACH")])
+        run(tl.tick())
+    assert tl.degraded
+    rb = next(c for c in tl.cards.values() if c is not ai)
+    assert tl.card_payload(rb)["rule_based"] is True
+    assert tl.card_payload(ai)["rule_based"] is False and ai.inc.summary == ai_summary
+    # the AI card goes quiet (resolves in, idle), then the AI resumes and attaches to both
+    feed(tl, [ev(90, sec=60, status="resolved", **cert)])
+    tl._select(T0 + 60)
+    sim.clock.t = T0 + 40 * 60
+    tl._age(sim.clock.t)
+    assert ai.inc.status == "quiet" and tl.card_payload(ai)["rule_based"] is False
+    real.t += 60
+    llm.results = [{"attach": [{"incident_id": ai.id, "event_ids": ["e1"]},
+                               {"incident_id": rb.id, "event_ids": ["e2"]}]}]
+    feed(tl, [ev(100, sec=40 * 60, **cert), ev(101, sec=40 * 60, host="nhl-win-01", title="Host nhl-win-01 UNREACH")])
+    run(tl.tick())
+    assert not tl.degraded
+    by_id = {c["id"]: c for c in tl.board()}
+    assert by_id[ai.id]["rule_based"] is False and by_id[rb.id]["rule_based"] is True
+    assert by_id[rb.id]["summary"].startswith(f"{rb.evidence_total} alerts")      # counts kept current
+    assert "Grouped by keywords" not in by_id[ai.id]["summary"]
+
+
+def test_ui_chip_and_cleared_line_follow_the_payload_fields():
+    from pathlib import Path
+    html = (Path(__file__).resolve().parents[1] / "static" / "index.html").read_text()
+    assert ':hidden="!i.rule_based" x-text="copy.ruleBased"' in html
+    assert "i.origin" not in html                     # the chip never keys on the loop's mode
+    assert "copy.clearedLine(clock(i.cleared_ts))" in html
 
 
 def test_budget_refusal_degrades_at_once():

@@ -54,7 +54,11 @@ deploy/               EC2 kit, PREPARED NOT RUN (deploy/README.md)
   ahead). Credit needs that causal link, so false alarms stay false at any horizon.
 - Triage cards: a card whose alerts have all resolved goes quiet after `recovered_quiet_min`;
   a new incident whose alerts already all resolved (branch-router blip) opens no card. Summary
-  sentences that restate the likely cause are dropped (`drop_repeated_cause`).
+  sentences that restate the likely cause are dropped (`drop_repeated_cause`). A recovering card
+  (quiet, >= 80 % resolved) carries `cleared_ts`; the UI puts the templated "Alerts have cleared
+  since HH:MM; confirm the service is back." above the dimmed summary (no extra LLM call). The
+  "Rule-based" chip follows `rule_based` (`Card.text_by`, set where the text is written), not the
+  loop's current mode. Inside the tab panels, per-card visibility uses `:hidden`, not x-show.
 - Cost readout: "per minute" on Now = session-less calls (live triage) only; the engineer run's
   one-off cost is `engineer.cost_usd`, shown under the run summary.
 - Noise-drop figure (`LiveSim.drop_payload`): since the last accepted rule, firing alerts per

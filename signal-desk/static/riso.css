@@ -24,6 +24,9 @@ button, input { font: inherit; color: inherit; }
 button { cursor: pointer; }
 button:disabled { cursor: not-allowed; }
 [x-cloak] { display: none !important; }
+/* `:hidden` instead of x-show inside the tab panels: an x-show toggled while its tab is hidden
+   (cards going quiet while the Proposals tab is open) can leave a stale state behind */
+[hidden] { display: none !important; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 :focus-visible { outline: 3px solid var(--pink); outline-offset: 3px; }
 h1, h2, h3 { font-family: var(--font); font-stretch: 78%; font-weight: 800; letter-spacing: -0.02em; text-wrap: balance; }
@@ -123,6 +126,8 @@ main.wrap { padding-top: 40px; padding-bottom: 70px; }
 .inc-title { font-size: 1.35rem; line-height: 1.1; color: var(--navy); }
 .inc-sum { font-size: 15.5px; line-height: 1.5; min-height: 3em; }
 .inc-sum.waiting { color: var(--muted); font-style: italic; }
+.inc-status { font-size: 15.5px; line-height: 1.45; font-weight: 700; }
+.inc-sum.stale { color: var(--muted); font-size: 14px; min-height: 0; }
 .inc-sum.typing::after { content: ""; display: inline-block; width: .5em; height: 1em; margin-left: 2px; vertical-align: -2px; background: var(--pink); animation: blink 1s steps(2) infinite; }
 @keyframes blink { 50% { opacity: 0; } }
 .inc-cause { font-size: 14.5px; line-height: 1.45; }

@@ -35,6 +35,8 @@ function desk() {
       more: (n) => `and ${n} more`, gotIt: 'Got it', writing: 'Writing a summary…',
       quiet: 'Quiet: no new alerts for 10 min', recovering: 'Recovering: most alerts have cleared',
       ruleBased: 'Rule-based',
+      // recovering cards: templated, above the (dimmed) summary written while the alerts fired
+      clearedLine: (hhmm) => `Alerts have cleared since ${hhmm}; confirm the service is back.`,
       // the rule engineer (Proposals tab)
       eng: {
         introTitle: 'Let AI study 30 days of history',
@@ -481,7 +483,7 @@ function desk() {
         <span><i class="key-pass"></i>Reach a human</span>
       </div>
     </div>
-    <p class="drop" x-show="drop" x-cloak role="status" x-text="dropText"></p>
+    <p class="drop" :hidden="!drop" x-cloak role="status" x-text="dropText"></p>
     <div class="strip" role="img" aria-label="Alerts per simulated minute over the last 30 minutes">
       <template x-for="(b, i) in strip" :key="b.t">
         <div class="bar" :class="{ now: i === strip.length - 1 }" :title="`${clock(b.t)}  ${b.passed} passed, ${b.filtered} filtered`">
@@ -499,21 +501,24 @@ function desk() {
   <!-- INCIDENTS: AI triage folds the stream into a few cards -->
   <section class="incidents" id="incidents" aria-labelledby="inc-title">
     <h2 class="section-title" id="inc-title">Needs a human</h2>
-    <div class="empty-state" x-show="board.length === 0" x-text="copy.emptyBoard">Nothing needs a human right now.</div>
+    <div class="empty-state" :hidden="board.length !== 0" x-text="copy.emptyBoard">Nothing needs a human right now.</div>
     <div class="inc-grid">
       <template x-for="i in board" :key="i.id">
         <article class="inc" :class="[`edge-${edge(i)}`, { quiet: i.status === 'quiet', fresh: freshIds[i.id] }]"
                  :aria-label="`${i.customer_name}: ${i.title}`">
           <div class="inc-top">
             <span class="inc-cust" x-text="i.customer_short"></span>
-            <span class="inc-tag" x-show="i.origin === 'degraded'" x-text="copy.ruleBased"></span>
-            <span class="inc-tag" x-show="i.status === 'quiet'" x-text="i.recovering ? copy.recovering : copy.quiet"></span>
+            <span class="inc-tag" :hidden="!i.rule_based" x-text="copy.ruleBased"></span>
+            <span class="inc-tag" :hidden="i.status !== 'quiet'" x-text="i.recovering ? copy.recovering : copy.quiet"></span>
             <span class="inc-since" x-text="`since ${clock(i.opened_ts)}`"></span>
           </div>
           <h3 class="inc-title" x-text="i.title"></h3>
-          <p class="inc-sum" :class="{ typing: i.summary_state === 'streaming', waiting: !i.summary }"
+          <p class="inc-status" :hidden="!(i.recovering && i.cleared_ts)" x-text="copy.clearedLine(clock(i.cleared_ts))"
+             role="status"></p>
+          <p class="inc-sum" :class="{ typing: i.summary_state === 'streaming', waiting: !i.summary,
+                                       stale: i.recovering && i.cleared_ts }"
              x-text="i.summary || copy.writing" aria-live="polite"></p>
-          <p class="inc-cause" x-show="i.likely_cause"><span x-text="copy.cause"></span> <span x-text="i.likely_cause"></span></p>
+          <p class="inc-cause" :hidden="!i.likely_cause"><span x-text="copy.cause"></span> <span x-text="i.likely_cause"></span></p>
           <details class="inc-ev">
             <summary x-text="copy.evidence(i.evidence_count, i.tool_count)"></summary>
             <ul class="ev-lines">
@@ -527,7 +532,7 @@ function desk() {
                 </li>
               </template>
             </ul>
-            <p class="ev-more" x-show="i.more" x-text="copy.more(i.more)"></p>
+            <p class="ev-more" :hidden="!i.more" x-text="copy.more(i.more)"></p>
           </details>
           <div class="inc-foot">
             <p class="inc-next" x-text="i.next_step"></p>
