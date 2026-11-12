@@ -1,0 +1,14 @@
+{
+  "title": "Branch VPN blip as one alert",
+  "rule": {
+    "kind": "correlate",
+    "members": [
+      {"source": "fortigate", "title_contains": "IPsec VPN tunnel"},
+      {"source": "prtg", "host_glob": "*-br-*", "title_contains": "Ping Down"},
+      {"source": "solarwinds", "host_glob": "*-br-*", "title_contains": "is down"},
+      {"source": "checkmk", "host_glob": "*-br-*", "title_contains": "UNREACH"}
+    ],
+    "within_min": 5,
+    "keep": 0
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "title": "Zabbix CPU: 90% for 5 min",
+  "rule": {
+    "kind": "retune",
+    "source": "zabbix",
+    "check": "cpu_util",
+    "op": ">",
+    "new_threshold": 90,
+    "sustain_min": 5
+  }
+}

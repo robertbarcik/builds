@@ -1,0 +1,10 @@
+{
+  "title": "Backup repository filling up",
+  "rule": {
+    "kind": "precursor",
+    "match": {"source": "netapp", "title_contains": "Volume Space Nearly Full on vol_veeam"},
+    "count": 2,
+    "within_min": 720,
+    "raise": {"title": "Backup repository filling up: nightly jobs at risk", "severity": "major"}
+  }
+}

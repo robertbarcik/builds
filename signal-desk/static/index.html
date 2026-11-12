@@ -1,0 +1,719 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Signal Desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/riso.css">
+<script>
+/* Signal Desk UI state. One Alpine component; the live stream is read with fetch + a reader. */
+function desk() {
+  return {
+    tab: 'now',
+    connected: false,
+    simTs: '',
+    total: 0,
+    passed: 0,
+    filtered: 0,
+    strip: [],
+    markers: [],
+    drop: null,                      // {label, before, after, pct}: alerts/min since the last accepted rule, without vs with it
+    tail: [],
+    rules: [],                       // all rules (on and off) with live counts
+    // all visible wording of the headline and the triage board in one place
+    copy: {
+      inLabel: 'alerts came in', outLabel: 'need a human', outLabelOne: 'needs a human',
+      passedLabel: 'got past the rules', filteredLabel: 'filtered by rules',
+      cost: (usd) => usd === null ? 'Live triage AI cost under $0.001 per minute' : `Live triage AI cost ≈ $${usd} per minute`,
+      degraded: (reason) => reason === 'budget' ? 'AI paused (spend cap reached), rule-based grouping'
+        : reason === 'no_model' ? 'No AI configured, rule-based grouping' : 'AI paused, rule-based grouping',
+      emptyBoard: 'Nothing needs a human right now.',
+      cause: 'Likely cause', evidence: (n, t) => `Evidence: ${n} alert${n === 1 ? '' : 's'} from ${t} tool${t === 1 ? '' : 's'}`,
+      more: (n) => `and ${n} more`, gotIt: 'Got it', writing: 'Writing a summary…',
+      quiet: 'Quiet: no new alerts for 10 min', recovering: 'Recovering: most alerts have cleared',
+      ruleBased: 'Rule-based',
+      // the rule engineer (Proposals tab)
+      eng: {
+        introTitle: 'Let AI study 30 days of history',
+        introText: 'The AI reads a month of alerts from every source and proposes a few plain rules. The rule engine tests each one against the history before you decide.',
+        runBtn: 'Ask AI to study 30 days of history',
+        loadSavedLink: 'load last run',
+        loadSavedBtn: (d) => d ? `Load the last run (saved ${d})` : 'Load the last run',
+        runAgain: 'Run the AI again',
+        tryAgain: 'Try the live AI again',
+        cooldown: (s) => `The AI can run again in ${Math.ceil(s)} s.`,
+        runningTitle: 'The AI is studying 30 days of alerts',
+        replayingTitle: (d) => `Replaying the saved run from ${d || 'an earlier day'}`,
+        elapsed: (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')} · usually under a minute`,
+        savedChip: (d) => `Saved run from ${d || 'an earlier day'}`,
+        runCost: (usd) => `This run cost $${usd < 0.01 ? usd.toFixed(3) : usd.toFixed(2)} in AI calls, once.`,
+        savedCost: 'Replayed from the saved run: no AI calls, numbers recomputed now.',
+        howItWorked: (n) => `How the AI worked (${n} steps)`,
+        kind: { suppress: 'Noise', precursor: 'Early warning', retune: 'Threshold', correlate: 'Correlate' },
+        accepted: 'Accepted, live now', rejected: 'Rejected',
+        ruleSays: 'What the rule does:',
+        byEngine: 'Computed by the rule engine on 30 days of history, not by the AI.',
+        ruleFold: 'Rule', nativeFold: 'In your tool’s syntax',
+        draftNote: (d) => `for ${d}, written by the AI; check it before use.`,
+        noDraft: 'No draft this time; the rule above is what runs here.',
+        samplesHidden: 'Alerts it would have silenced last month:',
+        samplesRaised: 'Warnings it would have raised last month:',
+        accept: 'Accept', reject: 'Reject',
+        toast: 'Rule live, watch the strip',
+        stats: {
+          saved: 'alerts saved last month', share: 'of all alerts', caught: 'incidents still caught',
+          right: 'warnings that were right', falseAlarms: 'false alarms', lead: 'median lead time',
+        },
+        errorText: (r, saved = true) => ({
+          budget: 'The AI budget for this hour is used up, so the AI did not run.',
+          cooldown: 'The AI ran a moment ago and needs a short pause.',
+          ai_unavailable: 'The AI service could not be reached just now.',
+          empty: 'The AI returned an empty answer.',
+          timeout: 'The AI did not finish in three minutes.',
+          no_proposals: 'None of the AI’s proposals held up in the backtest.',
+          cancelled: 'The run stopped because nobody was watching.',
+        }[r] || 'The AI run did not finish.') + (saved ? ' You can load the last good run instead; its numbers are recomputed now.' : ''),
+        busy: 'A run is already in progress.',
+      },
+    },
+    eng: { state: 'idle', log: [], saved_available: false, cooldown_s: 0 },
+    proposals: [],
+    engAt: 0,                        // client time when eng.elapsed_s / cooldown_s were received
+    nowMs: Date.now(),
+    engNotice: '',
+    actingOn: null,
+    toast: '',
+    incidents: [],
+    freshIds: {},
+    triage: { degraded: false },
+    budget: { usd_last_min: 0 },
+    scenarios: [],
+    inject: { active: null, remaining_s: 0, cooldown_s: 0 },
+    notice: '',
+    busy: false,
+
+    init() {
+      this.loadScenarios();
+      this.loadRules();
+      this.connect();
+      setInterval(() => { this.nowMs = Date.now(); }, 1000);
+    },
+
+    // ---- rule engineer
+    setEng(e) {
+      if (!e) return;
+      this.eng = e;
+      this.engAt = Date.now();
+      this.nowMs = this.engAt;
+    },
+    get engRunning() { return this.eng.state === 'running' || this.eng.state === 'replaying'; },
+    get engIdle() { return this.eng.state === 'idle' || this.eng.state === 'failed'; },
+    get engBusy() { return this.engRunning; },
+    get engFailedWithSaved() { return this.eng.state === 'failed' && !!this.eng.saved_available; },
+    get elapsed() { return (this.eng.elapsed_s || 0) + Math.max(0, (this.nowMs - this.engAt) / 1000); },
+    get cooldownLeft() { return Math.max(0, (this.eng.cooldown_s || 0) - (this.nowMs - this.engAt) / 1000); },
+    get pendingCount() { return this.proposals.filter(p => p.status === 'proposed').length; },
+    fmtT(t) { const s = Math.max(0, Math.round(t || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; },
+    dialectName(d) {
+      return { prometheus: 'Prometheus', zabbix: 'Zabbix', azure_kql: 'Azure Monitor (KQL)', dynatrace: 'Dynatrace',
+               checkmk: 'Checkmk', generic: 'an event manager' }[d] || d;
+    },
+    stats(p) {
+      const b = p.backtest || {}, c = this.copy.eng.stats;
+      if (p.kind === 'precursor') {
+        const lead = b.median_lead_min == null ? '–' : b.median_lead_min >= 90 ? `${(b.median_lead_min / 60).toFixed(1)} h` : `${Math.round(b.median_lead_min)} min`;
+        return [
+          { value: `${b.precursor_true} of ${b.precursor_fired}`, label: c.right },
+          { value: this.fmt(b.precursor_false), label: c.falseAlarms },
+          { value: lead, label: c.lead },
+        ];
+      }
+      return [
+        { value: this.fmt(b.alerts_saved), label: c.saved },
+        { value: `${b.saved_pct}%`, label: c.share },
+        { value: `${b.incidents_visible} of ${b.incidents_total}`, label: c.caught },
+      ];
+    },
+    upsertProposal(p) {
+      const k = this.proposals.findIndex(x => x.id === p.id);
+      if (k < 0) this.proposals = [...this.proposals, p];
+      else this.proposals.splice(k, 1, p);
+    },
+    async engPost(url) {
+      this.engNotice = '';
+      try {
+        const r = await fetch(url, { method: 'POST' });
+        const d = await r.json();
+        if (d.engineer) this.setEng(d.engineer);
+        if (!r.ok) {
+          if (d.error === 'busy') this.engNotice = this.copy.eng.busy;
+          else if (d.error === 'budget') this.eng = { ...this.eng, state: 'failed', error: { reason: 'budget' } };
+        }
+      } catch (e) { this.engNotice = this.copy.eng.errorText('ai_unavailable'); }
+    },
+    runEngineer() { this.proposals = []; return this.engPost('/api/engineer/run'); },
+    loadSaved() { this.proposals = []; return this.engPost('/api/engineer/load-saved'); },
+    async accept(p) {
+      this.actingOn = p.id;
+      try {
+        const r = await fetch(`/api/proposals/${encodeURIComponent(p.id)}/accept`, { method: 'POST' });
+        const d = await r.json();
+        if (r.ok) {
+          this.upsertProposal(d.proposal);
+          this.tab = 'now';
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+          this.toast = this.copy.eng.toast;
+          setTimeout(() => { this.toast = ''; }, 4500);
+        }
+      } finally { this.actingOn = null; }
+    },
+    async reject(p) {
+      this.actingOn = p.id;
+      try {
+        const r = await fetch(`/api/proposals/${encodeURIComponent(p.id)}/reject`, { method: 'POST' });
+        const d = await r.json();
+        if (r.ok) this.upsertProposal(d.proposal);
+      } finally { this.actingOn = null; }
+    },
+
+    async loadRules() {
+      try {
+        const r = await fetch('/api/rules', { cache: 'no-store' });
+        this.rules = (await r.json()).rules;
+      } catch (e) { /* the stream's hello carries them too */ }
+    },
+    get activeCount() { return this.rules.filter(r => r.enabled).length; },
+    ruleCount(r) {
+      if (r.kind === 'precursor') return r.raised === 1 ? 'Raised 1 early warning so far' : `Raised ${this.fmt(r.raised)} early warnings so far`;
+      if (r.kind === 'correlate') return `Saved ${this.fmt(r.filtered)} alerts by grouping so far`;
+      return r.filtered === 1 ? 'Filtered 1 alert so far' : `Filtered ${this.fmt(r.filtered)} alerts so far`;
+    },
+    async toggleRule(r, on) {
+      r.enabled = on;
+      try {
+        const res = await fetch(`/api/rules/${encodeURIComponent(r.id)}/toggle`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: on }),
+        });
+        if (!res.ok) await this.loadRules();
+      } catch (e) { await this.loadRules(); }
+    },
+    applyCounts(counts) {
+      if (!counts) return;
+      for (const r of this.rules) {
+        const c = counts[r.id];
+        if (c) { r.filtered = c.filtered; r.raised = c.raised; }
+      }
+    },
+
+    async loadScenarios() {
+      try {
+        const r = await fetch('/api/scenarios', { cache: 'no-store' });
+        const d = await r.json();
+        this.scenarios = d.scenarios.filter(s => s.visitor);
+        this.inject = d.inject;
+      } catch (e) { /* the stream will retry; tiles stay empty until then */ }
+    },
+
+    async connect() {
+      for (;;) {
+        try {
+          const res = await fetch('/api/stream', { cache: 'no-store' });
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+          this.connected = true;
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+            for (const line of lines) {
+              if (!line.startsWith('data: ')) continue;
+              this.handle(JSON.parse(line.slice(6)));
+            }
+          }
+        } catch (e) { /* fall through to reconnect */ }
+        this.connected = false;
+        await new Promise(r => setTimeout(r, 2000));
+      }
+    },
+
+    handle(m) {
+      if (m.type === 'hello' || m.type === 'reset') {
+        if (m.rules) this.rules = m.rules;
+        this.applyTick(m);
+        this.tail = m.tail || [];
+        if (m.incidents) this.incidents = m.incidents;
+        if (m.triage) this.triage = m.triage;
+        if (m.budget) this.budget = m.budget;
+        if (m.type === 'reset') { this.notice = ''; this.incidents = []; }
+        if (m.engineer) this.setEng(m.engineer);
+        if (m.proposals) this.proposals = m.proposals;
+      } else if (m.type === 'engineer_state') {
+        const fresh = m.engineer.run_id !== this.eng.run_id;
+        this.setEng(m.engineer);
+        if (fresh) this.proposals = [];
+      } else if (m.type === 'engineer_log') {
+        if (m.run_id === this.eng.run_id && !this.eng.log.some(l => l.t === m.entry.t && l.text === m.entry.text)) {
+          this.eng.log = [...this.eng.log, m.entry];
+        }
+      } else if (m.type === 'engineer_proposal') {
+        if (m.run_id === this.eng.run_id) this.upsertProposal(m.proposal);
+      } else if (m.type === 'engineer_done') {
+        if (m.run_id === this.eng.run_id) this.eng = { ...this.eng, state: 'done', summary: m.summary };
+      } else if (m.type === 'engineer_error') {
+        if (m.run_id === this.eng.run_id) this.eng = { ...this.eng, state: 'failed', error: m };
+      } else if (m.type === 'incident_upsert') {
+        this.upsertIncident(m.incident);
+      } else if (m.type === 'incident_delta') {
+        const i = this.incidents.find(x => x.id === m.id);
+        if (i) {
+          if (m.start) { i.summary = ''; i.summary_state = 'streaming'; }
+          i.summary += m.delta || '';
+        }
+      } else if (m.type === 'incident_remove') {
+        this.incidents = this.incidents.filter(x => x.id !== m.id);
+      } else if (m.type === 'triage_state') {
+        this.triage = m;
+      } else if (m.type === 'budget') {
+        this.budget = m;
+      } else if (m.type === 'tick') {
+        this.applyTick(m);
+      } else if (m.type === 'events') {
+        this.tail = [...m.events.slice().reverse(), ...this.tail].slice(0, 10);
+      } else if (m.type === 'inject') {
+        this.inject = m;
+      } else if (m.type === 'rule_changed') {
+        this.rules = m.rules;
+      }
+    },
+
+    applyTick(m) {
+      this.simTs = m.sim_ts;
+      this.total = m.total;
+      this.passed = m.passed || 0;
+      this.filtered = m.filtered || 0;
+      this.applyCounts(m.rule_counts);
+      this.strip = m.strip || [];
+      this.markers = m.markers || [];
+      this.drop = m.drop || null;
+      if (m.inject) {
+        const wasActive = this.inject && this.inject.active;
+        this.inject = m.inject;
+        if (wasActive && !m.inject.active) this.notice = '';
+      }
+    },
+
+    // ---- incident board
+    upsertIncident(inc) {
+      const k = this.incidents.findIndex(x => x.id === inc.id);
+      if (k < 0) {
+        this.freshIds[inc.id] = true;
+        setTimeout(() => { delete this.freshIds[inc.id]; }, 4000);
+        this.incidents = [...this.incidents, inc];
+        return;
+      }
+      const cur = this.incidents[k];
+      // a summary that is still streaming in keeps its text until the final upsert
+      if (cur.summary_state === 'streaming' && inc.summary_state === 'streaming') inc.summary = cur.summary;
+      this.incidents.splice(k, 1, inc);
+    },
+    get board() {
+      const rank = { critical: 4, major: 3, minor: 2, warning: 1, info: 0 };
+      return this.incidents.slice().sort((a, b) =>
+        (a.status === 'open' ? 0 : 1) - (b.status === 'open' ? 0 : 1)
+        || rank[b.severity] - rank[a.severity]
+        || (b.opened_ts || '').localeCompare(a.opened_ts || ''));
+    },
+    get openCount() { return this.incidents.filter(i => i.status === 'open').length; },
+    edge(i) {
+      if (i.status === 'quiet') return i.recovering ? 'ok' : 'idle';
+      return (i.severity === 'critical' || i.severity === 'major') ? 'bad' : 'warn';
+    },
+    async dismiss(i) {
+      this.incidents = this.incidents.filter(x => x.id !== i.id);
+      try {
+        await fetch(`/api/incidents/${encodeURIComponent(i.id)}/dismiss`, { method: 'POST' });
+      } catch (e) { /* the next hello restores the true board */ }
+    },
+    get costText() {
+      const v = Number(this.budget && this.budget.usd_last_min || 0);
+      const s = v === 0 ? '0.000' : v < 0.001 ? null : v < 0.1 ? v.toFixed(3) : v.toFixed(2);
+      return this.copy.cost(s);
+    },
+    get costTitle() {
+      const t = (this.budget && this.budget.totals) || {};
+      return `${t.calls || 0} AI calls so far, $${Number(t.cost_usd || 0).toFixed(4)} in total`;
+    },
+
+    // ---- noise strip
+    get dropText() {
+      const d = this.drop;
+      if (!d) return '';
+      const n = (v) => v >= 10 ? Math.round(v) : Math.round(v * 10) / 10;
+      if (d.after == null) return `“${d.label}” is live: measuring what it removes…`;
+      const pct = d.pct == null ? '' : ` (${d.pct > 0 ? '+' : d.pct < 0 ? '−' : ''}${Math.abs(d.pct)}%)`;
+      return `Alerts reaching a human since “${d.label}”: ${n(d.before)}/min without it → ${n(d.after)}/min with it${pct}`;
+    },
+    get stripMax() {
+      return Math.max(10, ...this.strip.map(b => b.passed + b.filtered));
+    },
+    pct(n) { return (100 * n / this.stripMax).toFixed(1) + '%'; },
+    markerRow(mk) {
+      // markers within 4 minutes of an earlier one stack their labels downwards instead of overlapping
+      const vis = this.markers.filter(m => this.markerLeft(m) !== null);
+      const i = vis.indexOf(mk);
+      let row = 0;
+      for (let j = i - 1; j >= 0 && Date.parse(mk.ts) - Date.parse(vis[j].ts) < 4 * 60000; j--) row++;
+      return Math.min(row, 4);
+    },
+    markerLeft(mk) {
+      const t = mk.ts.slice(0, 16);
+      const i = this.strip.findIndex(b => b.t.slice(0, 16) === t);
+      return i < 0 ? null : (100 * i / this.strip.length).toFixed(2) + '%';
+    },
+
+    // ---- formatting
+    fmt(n) { return Number(n || 0).toLocaleString('en-GB'); },
+    clock(ts, secs) {
+      if (!ts) return '';
+      const d = new Date(Date.parse(ts) + 3600 * 1000);          // CET, like the simulator
+      const s = d.toISOString();
+      return secs ? s.slice(11, 19) : s.slice(11, 16);
+    },
+    sevClass(e) { return e.status === 'resolved' ? 'ok' : e.severity; },
+    lineMsg(e) { return e.status === 'resolved' ? e.title : `${e.native_severity}  ${e.title}`; },
+
+    // ---- break something
+    get injectWait() {
+      if (this.inject && this.inject.active) return `A scenario is playing: about ${Math.ceil(this.inject.remaining_s)} s left.`;
+      if (this.inject && this.inject.cooldown_s > 0) return `Ready again in ${Math.ceil(this.inject.cooldown_s)} s.`;
+      return '';
+    },
+    get canInject() { return !this.busy && !this.injectWait; },
+    openBreak() { this.loadScenarios(); this.$refs.breakDlg.showModal(); },
+    async doInject(id) {
+      this.busy = true;
+      try {
+        const r = await fetch('/api/inject', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scenario_id: id }),
+        });
+        const d = await r.json();
+        if (r.ok) {
+          this.$refs.breakDlg.close();
+          this.notice = `${d.title}: it starts now at ${d.customer} and plays out over about ${Math.round(d.plays_for_s)} seconds.`;
+          this.tab = 'now';
+        } else if (d.inject) {
+          this.inject = d.inject;
+        }
+      } finally { this.busy = false; }
+    },
+
+    async resetDemo() {
+      await fetch('/api/reset', { method: 'POST' });
+      this.notice = '';
+    },
+  };
+}
+</script>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.17.4/dist/cdn.min.js"></script>
+</head>
+<body x-data="desk()">
+
+<header class="topbar">
+  <div class="wrap">
+    <div class="brand">
+      <a class="mark" href="https://barcik.training" target="_blank" rel="noopener">barcik<b>.</b>training</a>
+      <span class="product">Signal Desk</span>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Screens">
+      <button class="tab" role="tab" :aria-selected="tab === 'now'" @click="tab = 'now'">Now</button>
+      <button class="tab" role="tab" :aria-selected="tab === 'proposals'" @click="tab = 'proposals'">Proposals<span class="tab-count" x-show="pendingCount" x-text="pendingCount"></span></button>
+    </nav>
+    <div class="tools">
+      <button class="chip" @click="$refs.rulesDlg.showModal()" x-text="`Active rules (${activeCount})`">Active rules (0)</button>
+      <button class="chip" @click="$refs.aiDlg.showModal()" aria-label="About the AI on this page">AI notice</button>
+      <button class="linkish" @click="resetDemo()">Reset demo</button>
+    </div>
+  </div>
+</header>
+
+<!-- ===================== Now ===================== -->
+<main class="wrap" x-show="tab === 'now'">
+  <div class="head">
+    <div class="stat">
+      <div class="headline" aria-live="off">
+        <div class="hl-in"><b x-text="fmt(total)">0</b><span x-text="copy.inLabel">alerts came in</span></div>
+        <div class="hl-arrow" aria-hidden="true">&rarr;</div>
+        <div class="hl-out"><b x-text="fmt(openCount)">0</b><span x-text="openCount === 1 ? copy.outLabelOne : copy.outLabel">need a human</span></div>
+      </div>
+      <div class="hl-sub" x-show="total" x-cloak>
+        <span x-text="`${fmt(passed)} ${copy.passedLabel}`"></span>
+        <span aria-hidden="true">&middot;</span>
+        <span x-text="`${fmt(filtered)} ${copy.filteredLabel}`"></span>
+      </div>
+      <div class="clock" x-show="simTs" x-cloak>
+        Simulated time <span x-text="clock(simTs)"></span>, one minute per second
+        <span x-show="!connected"> (reconnecting)</span>
+      </div>
+      <div class="ai-line" x-show="simTs" x-cloak>
+        <span class="cost" :title="costTitle" x-text="costText"></span>
+        <span class="chip paused" x-show="triage.degraded" x-text="copy.degraded(triage.reason)" role="status"></span>
+      </div>
+    </div>
+    <button class="btn btn-big" @click="openBreak()">Break something</button>
+  </div>
+
+  <p class="notice" x-show="notice" x-cloak x-text="notice"></p>
+  <p class="toast" x-show="toast" x-cloak x-transition.opacity.duration.300ms role="status" x-text="toast"></p>
+
+  <section class="card panel" aria-labelledby="strip-title">
+    <div class="panel-head">
+      <h2 class="section-title" id="strip-title">Alerts per minute</h2>
+      <div class="legend">
+        <span><i class="key-filt"></i>Filtered by rules</span>
+        <span><i class="key-pass"></i>Reach a human</span>
+      </div>
+    </div>
+    <p class="drop" x-show="drop" x-cloak role="status" x-text="dropText"></p>
+    <div class="strip" role="img" aria-label="Alerts per simulated minute over the last 30 minutes">
+      <template x-for="(b, i) in strip" :key="b.t">
+        <div class="bar" :class="{ now: i === strip.length - 1 }" :title="`${clock(b.t)}  ${b.passed} passed, ${b.filtered} filtered`">
+          <div class="pass" :style="`height: ${pct(b.passed)}`"></div>
+          <div class="filt" :style="`height: ${pct(b.filtered)}`"></div>
+        </div>
+      </template>
+      <template x-for="mk in markers" :key="mk.ts + mk.label">
+        <div class="marker" x-show="markerLeft(mk) !== null" :style="`left: ${markerLeft(mk)}`"><span :style="`top: ${markerRow(mk) * 19 - 2}px`" x-text="mk.label"></span></div>
+      </template>
+    </div>
+    <div class="strip-axis"><span>30 min ago</span><span>now</span></div>
+  </section>
+
+  <!-- INCIDENTS: AI triage folds the stream into a few cards -->
+  <section class="incidents" id="incidents" aria-labelledby="inc-title">
+    <h2 class="section-title" id="inc-title">Needs a human</h2>
+    <div class="empty-state" x-show="board.length === 0" x-text="copy.emptyBoard">Nothing needs a human right now.</div>
+    <div class="inc-grid">
+      <template x-for="i in board" :key="i.id">
+        <article class="inc" :class="[`edge-${edge(i)}`, { quiet: i.status === 'quiet', fresh: freshIds[i.id] }]"
+                 :aria-label="`${i.customer_name}: ${i.title}`">
+          <div class="inc-top">
+            <span class="inc-cust" x-text="i.customer_short"></span>
+            <span class="inc-tag" x-show="i.origin === 'degraded'" x-text="copy.ruleBased"></span>
+            <span class="inc-tag" x-show="i.status === 'quiet'" x-text="i.recovering ? copy.recovering : copy.quiet"></span>
+            <span class="inc-since" x-text="`since ${clock(i.opened_ts)}`"></span>
+          </div>
+          <h3 class="inc-title" x-text="i.title"></h3>
+          <p class="inc-sum" :class="{ typing: i.summary_state === 'streaming', waiting: !i.summary }"
+             x-text="i.summary || copy.writing" aria-live="polite"></p>
+          <p class="inc-cause" x-show="i.likely_cause"><span x-text="copy.cause"></span> <span x-text="i.likely_cause"></span></p>
+          <details class="inc-ev">
+            <summary x-text="copy.evidence(i.evidence_count, i.tool_count)"></summary>
+            <ul class="ev-lines">
+              <template x-for="e in i.evidence" :key="e.id">
+                <li>
+                  <span class="sev" :class="e.severity"></span>
+                  <span class="v" x-text="e.by_rule ? 'By rule' : e.vendor"></span>
+                  <span class="t" x-text="clock(e.ts, true)"></span>
+                  <span class="h" x-text="e.host"></span>
+                  <span class="msg" x-text="e.title"></span>
+                </li>
+              </template>
+            </ul>
+            <p class="ev-more" x-show="i.more" x-text="copy.more(i.more)"></p>
+          </details>
+          <div class="inc-foot">
+            <p class="inc-next" x-text="i.next_step"></p>
+            <button class="btn btn-2 got" @click="dismiss(i)" x-text="copy.gotIt">Got it</button>
+          </div>
+        </article>
+      </template>
+    </div>
+  </section>
+
+  <section class="tail" aria-labelledby="tail-title">
+    <div class="tail-head">
+      <h2 id="tail-title">Raw alerts</h2>
+      <span>latest 10, all sources</span>
+    </div>
+    <ul class="lines">
+      <template x-for="e in tail" :key="e.id">
+        <li :class="{ filtered: e.filtered, made: e.produced_by }" :title="e.filtered ? 'Filtered by a rule' : ''">
+          <span class="t" x-text="clock(e.ts, true)"></span>
+          <span class="sev" :class="sevClass(e)"></span>
+          <span class="v" x-text="e.produced_by ? 'By rule' : e.vendor"></span>
+          <span class="h" x-text="e.host"></span>
+          <span class="msg" x-text="lineMsg(e)"></span>
+        </li>
+      </template>
+    </ul>
+  </section>
+</main>
+
+<!-- ===================== Proposals ===================== -->
+<main class="wrap" x-show="tab === 'proposals'" x-cloak>
+  <!-- before a run, or after a failed one -->
+  <section class="card prop-intro" x-show="engIdle">
+    <h1 x-text="copy.eng.introTitle"></h1>
+    <p x-text="copy.eng.introText"></p>
+    <template x-if="eng.state === 'failed' && eng.error">
+      <div class="eng-error" role="status">
+        <p x-text="copy.eng.errorText(eng.error.reason, !!eng.saved_available)"></p>
+        <button class="btn" x-show="eng.saved_available" @click="loadSaved()" x-text="copy.eng.loadSavedBtn(eng.saved_date)"></button>
+      </div>
+    </template>
+    <div class="prop-actions">
+      <!-- after a failure the saved run is the primary way on; the live run becomes the quiet retry -->
+      <button class="btn" :class="engFailedWithSaved ? 'btn-2' : 'btn-big'" @click="runEngineer()"
+              :disabled="engBusy || cooldownLeft > 0" x-text="engFailedWithSaved ? copy.eng.tryAgain : copy.eng.runBtn"></button>
+      <button class="linkish" x-show="eng.saved_available && !engFailedWithSaved" @click="loadSaved()" :disabled="engBusy" x-text="copy.eng.loadSavedLink"></button>
+    </div>
+    <p class="later" x-show="cooldownLeft > 0" x-text="copy.eng.cooldown(cooldownLeft)"></p>
+    <p class="later" x-show="engNotice" x-text="engNotice"></p>
+  </section>
+
+  <!-- during a run: only the work log -->
+  <section class="card worklog" x-show="engRunning" aria-labelledby="wl-title">
+    <div class="wl-head">
+      <h2 id="wl-title" x-text="eng.mode === 'saved' ? copy.eng.replayingTitle(eng.replay_date) : copy.eng.runningTitle"></h2>
+      <span class="wl-time" x-show="eng.mode !== 'saved'" x-text="copy.eng.elapsed(elapsed)"></span>
+    </div>
+    <ol class="wl-lines" aria-live="polite">
+      <template x-for="(l, i) in eng.log" :key="i">
+        <li :class="l.kind"><span class="wl-t" x-text="fmtT(l.t)"></span><span class="wl-x" x-text="l.text"></span></li>
+      </template>
+      <li class="wl-cursor" aria-hidden="true"><span class="wl-t"></span><span class="wl-x"></span></li>
+    </ol>
+  </section>
+
+  <!-- after a run: total, cards, the log folded away -->
+  <template x-if="eng.state === 'done'">
+    <section class="results">
+      <div class="res-head">
+        <span class="chip saved-chip" x-show="eng.mode === 'saved'" x-text="copy.eng.savedChip(eng.replay_date)"></span>
+        <p class="res-sum" x-text="eng.summary"></p>
+        <p class="res-cost" x-show="eng.mode === 'saved' || eng.cost_usd != null"
+           x-text="eng.mode === 'saved' ? copy.eng.savedCost : copy.eng.runCost(Number(eng.cost_usd || 0))"></p>
+        <div class="res-tools">
+          <details class="wl-fold">
+            <summary x-text="copy.eng.howItWorked(eng.log.length)"></summary>
+            <ol class="wl-lines small">
+              <template x-for="(l, i) in eng.log" :key="i">
+                <li :class="l.kind"><span class="wl-t" x-text="fmtT(l.t)"></span><span class="wl-x" x-text="l.text"></span></li>
+              </template>
+            </ol>
+          </details>
+          <button class="linkish" @click="runEngineer()" :disabled="engBusy || cooldownLeft > 0"
+                  x-text="cooldownLeft > 0 ? copy.eng.cooldown(cooldownLeft) : copy.eng.runAgain"></button>
+        </div>
+      </div>
+      <div class="prop-grid">
+        <template x-for="p in proposals" :key="p.id">
+          <article class="prop" :class="[`k-${p.kind}`, p.status]" :aria-label="p.title">
+            <div class="prop-top">
+              <span class="kchip" :class="`k-${p.kind}`" x-text="copy.eng.kind[p.kind]"></span>
+              <span class="prop-state" x-show="p.status === 'accepted'" x-text="copy.eng.accepted"></span>
+              <span class="prop-state" x-show="p.status === 'rejected'" x-text="copy.eng.rejected"></span>
+            </div>
+            <h3 class="prop-title" x-text="p.title"></h3>
+            <p class="prop-why" x-show="p.reasoning" x-text="p.reasoning"></p>
+            <p class="prop-rule"><span x-text="copy.eng.ruleSays"></span> <span x-text="p.description"></span></p>
+            <div class="prop-stats">
+              <template x-for="s in stats(p)" :key="s.label">
+                <div class="stat"><b x-text="s.value"></b><span x-text="s.label"></span></div>
+              </template>
+            </div>
+            <p class="prop-engine" x-text="copy.eng.byEngine"></p>
+            <details class="prop-fold">
+              <summary x-text="copy.eng.ruleFold"></summary>
+              <pre class="code" x-text="p.rule_json"></pre>
+            </details>
+            <details class="prop-fold">
+              <summary x-text="copy.eng.nativeFold"></summary>
+              <template x-if="p.native_draft">
+                <div>
+                  <p class="draft-label"><span x-text="p.native_draft.label"></span> <span x-text="copy.eng.draftNote(dialectName(p.native_draft.dialect))"></span></p>
+                  <pre class="code" x-text="p.native_draft.text"></pre>
+                </div>
+              </template>
+              <p class="draft-none" x-show="!p.native_draft" x-text="copy.eng.noDraft"></p>
+              <template x-if="p.backtest && p.backtest.samples && p.backtest.samples.length">
+                <div>
+                  <p class="samples-label" x-text="p.kind === 'precursor' ? copy.eng.samplesRaised : copy.eng.samplesHidden"></p>
+                  <ul class="samples"><template x-for="(s, i) in p.backtest.samples" :key="i"><li x-text="s"></li></template></ul>
+                </div>
+              </template>
+            </details>
+            <div class="prop-foot" x-show="p.status === 'proposed'">
+              <button class="btn" @click="accept(p)" :disabled="actingOn === p.id" x-text="copy.eng.accept"></button>
+              <button class="btn btn-2" @click="reject(p)" :disabled="actingOn === p.id" x-text="copy.eng.reject"></button>
+            </div>
+          </article>
+        </template>
+      </div>
+    </section>
+  </template>
+</main>
+
+<!-- ===================== dialogs ===================== -->
+<dialog class="sheet" x-ref="breakDlg" aria-labelledby="break-title">
+  <form method="dialog"><button class="d-close">Close</button></form>
+  <div class="sheet-body">
+    <h2 id="break-title">Break something</h2>
+    <p class="sub">Pick one. It plays out in about a minute, among all the usual noise.</p>
+    <div class="tiles">
+      <template x-for="s in scenarios" :key="s.id">
+        <button class="tile" :disabled="!canInject" @click="doInject(s.id)">
+          <b x-text="s.tile_title"></b>
+          <span x-text="s.tile_blurb"></span>
+        </button>
+      </template>
+    </div>
+    <p class="wait" x-text="injectWait"></p>
+  </div>
+</dialog>
+
+<dialog class="sheet small" x-ref="rulesDlg" aria-labelledby="rules-title">
+  <form method="dialog"><button class="d-close">Close</button></form>
+  <div class="sheet-body">
+    <h2 id="rules-title">Active rules</h2>
+    <p class="sub">Plain rules that run on every alert. Accepted proposals join this list.</p>
+    <template x-if="rules.length === 0">
+      <p class="rules-empty">No rules yet. Accepted proposals appear here, each with its own on and off switch.</p>
+    </template>
+    <ul class="rule-list">
+      <template x-for="r in rules" :key="r.id">
+        <li class="rule-row" :class="{ off: !r.enabled }">
+          <div class="rule-main">
+            <div class="rule-head"><b x-text="r.title"></b><span class="chip kind" x-text="r.kind_label"></span></div>
+            <p class="rule-desc" x-text="r.description"></p>
+            <p class="rule-count" x-text="r.enabled || r.filtered || r.raised ? ruleCount(r) : 'Switched off'"></p>
+          </div>
+          <label class="switch">
+            <input type="checkbox" role="switch" :checked="r.enabled" @change="toggleRule(r, $event.target.checked)"
+                   :aria-label="`${r.title}: ${r.enabled ? 'on' : 'off'}`">
+            <span class="knob" aria-hidden="true"></span>
+          </label>
+        </li>
+      </template>
+    </ul>
+  </div>
+</dialog>
+
+<dialog class="sheet small" x-ref="aiDlg" aria-labelledby="ai-title">
+  <form method="dialog"><button class="d-close">Close</button></form>
+  <div class="sheet-body">
+    <h2 id="ai-title">AI notice</h2>
+    <p>A live AI model writes the incident summaries and rule proposals on this page. All alerts, customers and hosts are synthetic. Vendor names are used for illustration only; there is no affiliation with or endorsement by those vendors.</p>
+  </div>
+</dialog>
+
+</body>
+</html>

@@ -1,0 +1,112 @@
+# Signal Desk configuration. Model IDs are checked against OpenRouter's live list by
+# scripts/verify_models.py; prices are USD per 1M tokens as listed there on 2026-11-11.
+
+server:
+  host: 127.0.0.1
+  port: 7870
+
+openrouter:
+  base_url: https://openrouter.ai/api/v1
+
+models:
+  # fast, cheap, non-reasoning, reliable json_object output
+  triage:
+    id: openai/gpt-4.1-mini
+    max_tokens: 1200
+    timeout_s: 30
+    temperature: 0.2
+  # short streamed incident summaries (same model: low latency to first token)
+  # (incident summaries ask for 220 tokens; the engineer's native-syntax drafts for 700)
+  render:
+    id: openai/gpt-4.1-mini
+    max_tokens: 700
+    timeout_s: 20
+    temperature: 0.3
+  # strong tool-calling model for the batch rule-engineer loop
+  engineer:
+    id: anthropic/claude-sonnet-5.5
+    max_tokens: 4000
+    timeout_s: 60
+    temperature: 0.2
+
+prices:
+  openai/gpt-4.1-mini: {input: 0.40, output: 1.60}
+  anthropic/claude-sonnet-5.5: {input: 2.00, output: 10.00}
+
+# Spend caps (app/llm/budget.py), sliding windows of real time. Measured 2026-11-11: live triage
+# with a browser open is ~450 calls and ~$0.45-0.6 an hour; one engineer run ~$0.2-0.4.
+# Hitting a cap never shows an error: triage drops to rule-based grouping (chip "AI paused"),
+# the engineer offers the saved run.
+caps:
+  calls_per_hour_global: 900
+  usd_per_hour_global: 2.00
+  usd_per_day_global: 10.00     # a browser tab left open all day stops at this
+  calls_per_hour_session: 450   # "session" = the rule engineer (triage is shared, global caps only)
+  usd_per_hour_session: 1.00
+  # one rule-engineer run start per cooldown, globally. The plan says one per 10 minutes; 90 s
+  # keeps a live demo sitting moving (a run costs about $0.2-0.4; the per-session dollar cap
+  # above still limits the engineer, which runs as session "engineer", to $1 an hour).
+  engineer_cooldown_s: 90
+  engineer_max_tool_calls: 14
+  engineer_max_seconds: 180
+  triage_interval_s: 8
+  triage_max_lines: 60
+
+# SIGNAL_DESK_PUBLIC=1 (the deploy kit's systemd unit sets it): these caps replace the ones above
+# and the developer hook POST /api/rules is off whatever `dev` says.
+public:
+  caps:
+    usd_per_hour_global: 1.50
+    usd_per_day_global: 6.00
+    usd_per_hour_session: 0.80    # about two engineer runs an hour
+    engineer_cooldown_s: 300      # one live engineer run start per 5 minutes (saved run always works)
+
+# Developer aids. POST /api/rules (scripts/try_rule.py --activate) only when manual_rules is true
+# or SIGNAL_DESK_DEV=1 is set.
+dev:
+  manual_rules: false
+
+# Live triage board (app/triage/loop.py). Minutes are SIMULATED (60 per real minute).
+triage:
+  quiet_after_min: 10        # no new evidence for this long and half its alerts resolved -> "quiet"
+  quiet_unresolved_after_min: 30   # no new evidence for this long -> "quiet" even if still firing
+  recovered_quiet_min: 3     # every alert on a card resolved and nothing new for this long -> "quiet"
+                             # (a new incident whose alerts have all resolved already opens no card)
+  expire_after_min: 45       # quiet this long -> card leaves the board (~45 real s)
+  ack_keep_min: 120          # a dismissed card still collects its alerts this long (no card)
+  max_cards: 6               # board cap; beyond it only major/critical incidents may open
+  max_new_per_tick: 3
+  max_summaries_per_tick: 2
+  failures_to_degrade: 2     # consecutive failed triage calls before rule-based grouping
+  probe_every_s: 30          # real seconds between attempts to resume AI triage
+  carry_max: 120             # unsent lines kept for the next tick (oldest dropped)
+  line_max_age_min: 15       # unsent lines older than this are dropped
+
+sim:
+  seed: 20261111
+  speed: 60                       # simulated seconds per real second
+  history_days: 30
+  history_end: "2026-11-10T00:00:00Z"
+  live_start: "2026-11-10T09:30:00Z"
+  live_rate_multiplier: 2.5      # live baseline is denser than history (4-8 events per real s)
+  # Live-only: the recurring noise rules can remove runs flat over the day at these multipliers
+  # (instead of live_rate_multiplier x the diurnal shape), so it is a large, steady share of the
+  # live stream at any simulated hour and an accepted rule visibly cuts the strip. Same titles,
+  # hosts and values as the history; only the rate differs. Measured on LiveSim + the rule engine
+  # (5 sim hours): ~80 % of live alerts are these families; NTP rule alone -33 %, +Zabbix CPU
+  # retune -47 %, +test VM -58 %, +stale SCOM host -68 % of the "reach a human" bars.
+  live_mix:
+    noise:checkmk_ntp: 14.0
+    noise:zabbix_test_vm: 6.4
+    noise:scom_stale_host: 5.8
+    noise:prtg_traffic: 7.6
+    tight:zabbix_cpu: 5.6
+    tight:azure_cpu: 5.2
+    tight:k8s_throttling: 5.6
+    tight:checkmk_fs: 4.5
+    group:branch_vpn_blip: 6.0
+    group:win_agent_restart: 3.0
+  auto_scenario_every_min: 180    # simulated minutes between background scenarios (~3 real min)
+  scenario_span_min: 75           # live scenarios are compressed to this many simulated minutes
+  inject_cooldown_s: 30           # real seconds after an injected scenario finishes
+  tick_ms: 250

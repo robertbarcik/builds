@@ -1,0 +1,10 @@
+.env
+.env.bak*
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+data/history.jsonl
+data/state/
+logs/
+.DS_Store
