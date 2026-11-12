@@ -90,17 +90,21 @@ sim:
   live_start: "2026-11-10T09:30:00Z"
   live_rate_multiplier: 2.5      # live baseline is denser than history (4-8 events per real s)
   # Live-only: the recurring noise rules can remove runs flat over the day at these multipliers
-  # (instead of live_rate_multiplier x the diurnal shape), so it is a large, steady share of the
-  # live stream at any simulated hour and an accepted rule visibly cuts the strip. Same titles,
-  # hosts and values as the history; only the rate differs. Measured on LiveSim + the rule engine
-  # (5 sim hours): ~80 % of live alerts are these families; NTP rule alone -33 %, +Zabbix CPU
-  # retune -47 %, +test VM -58 %, +stale SCOM host -68 % of the "reach a human" bars.
+  # (instead of live_rate_multiplier x the diurnal shape) and on a steady rhythm instead of
+  # Poisson (generator._bucket_count), so it is a steady share of the live stream at any
+  # simulated hour and an accepted rule visibly cuts the strip. Same titles, hosts and values as
+  # the history; only the rate and spacing differ. The four families the engineer usually
+  # proposes for are balanced at ~16-18 % of firing alerts each (history: NTP 14, test VM 11,
+  # Zabbix CPU 11, stale SCOM host 9 %), so no single one floods the floor. Measured on LiveSim +
+  # the rule engine (tests/test_rules_live.py::test_each_usual_noise_rule_gives_a_visible_drop):
+  # any one of NTP retune / test VM / stale SCOM / Zabbix CPU retune alone gives a drop figure of
+  # -15 to -22 %; the "reach a human" bars fall ~4.4 -> 2.4/min with three, -> 1.6 with four.
   live_mix:
-    noise:checkmk_ntp: 14.0
-    noise:zabbix_test_vm: 6.4
-    noise:scom_stale_host: 5.8
+    noise:checkmk_ntp: 10.0
+    noise:zabbix_test_vm: 12.0
+    noise:scom_stale_host: 14.5
     noise:prtg_traffic: 7.6
-    tight:zabbix_cpu: 5.6
+    tight:zabbix_cpu: 9.0
     tight:azure_cpu: 5.2
     tight:k8s_throttling: 5.6
     tight:checkmk_fs: 4.5

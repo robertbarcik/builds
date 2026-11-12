@@ -208,6 +208,18 @@ def _rate_factor(name: str, profile: str, ts: float, rate_mult: float,
     return shape(profile, ts) * rate_mult
 
 
+def _bucket_count(rng: random.Random, lam: float, b: int, bucket_s: int, regular_phase: Optional[float]) -> int:
+    """How many firings land in bucket b. History and unlisted live streams: Poisson. A live
+    `mix` family (flat rate) instead fires on a steady rhythm: the running total floor(lam * k +
+    phase) over bucket index k, so its count over any few minutes is within one of the expected
+    value. That keeps the noise-drop figure after an accepted rule close to the rule's share
+    instead of swinging with Poisson luck over a dozen simulated minutes."""
+    if regular_phase is None:
+        return poisson(rng, lam)
+    k = b // bucket_s
+    return math.floor(lam * (k + 1) + regular_phase) - math.floor(lam * k + regular_phase)
+
+
 def noise_events(customer: Customer, start: float, end: float, bucket_s: int, seed: Any,
                  rate_mult: float = 1.0, mix: Optional[dict[str, float]] = None) -> list[dict]:
     """Baseline noise for one customer in [start, end), bucketed so that the draw for a given
@@ -223,12 +235,14 @@ def noise_events(customer: Customer, start: float, end: float, bucket_s: int, se
         if s.source not in srcs:
             continue
         hosts = _stream_hosts(customer, s)
+        phase = (_rng(seed, customer.id, s.name, s.check, s.host_role, "phase").random()
+                 if mix and s.name in mix else None)
         for b in range(t0, int(end), bucket_s):
             lam = s.rate * len(hosts) * _rate_factor(s.name, s.profile, b + bucket_s / 2, rate_mult, mix) * bucket_s / 3600
             if lam <= 0:
                 continue
             rng = _rng(seed, customer.id, s.name, s.check, s.host_role, b, bucket_s)
-            for _ in range(poisson(rng, lam)):
+            for _ in range(_bucket_count(rng, lam, b, bucket_s, phase)):
                 ts = b + rng.random() * bucket_s
                 if not (start <= ts < end):
                     continue
@@ -241,12 +255,13 @@ def noise_events(customer: Customer, start: float, end: float, bucket_s: int, se
         members = [m for m in g.members if m.source in srcs]
         if len(members) < 2:
             continue
+        phase = _rng(seed, customer.id, g.name, "phase").random() if mix and g.name in mix else None
         for b in range(t0, int(end), bucket_s):
             lam = g.rate * _rate_factor(g.name, g.profile, b + bucket_s / 2, rate_mult, mix) * bucket_s / 3600
             if lam <= 0:
                 continue
             rng = _rng(seed, customer.id, g.name, b, bucket_s)
-            for _ in range(poisson(rng, lam)):
+            for _ in range(_bucket_count(rng, lam, b, bucket_s, phase)):
                 ts = b + rng.random() * bucket_s
                 if not (start <= ts < end):
                     continue

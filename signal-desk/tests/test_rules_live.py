@@ -116,6 +116,68 @@ def test_drop_figure_without_vs_with_the_rule(tmp_path):
     assert sim.drop_payload() is None
 
 
+# The noise rules the engineer usually proposes (shapes as in data/saved_run.json and examples/).
+USUAL_NOISE_RULES = {
+    "ntp_retune": {"kind": "retune", "source": "checkmk", "check": "ntp_time", "op": ">", "new_threshold": 190.0,
+                   "sustain_min": 10},
+    "test_vm": {"kind": "suppress", "match": {"source": "zabbix", "host_glob": "*-test-vm-*",
+                                              "title_contains": "agent is not available",
+                                              "severity_in": ["minor", "warning", "info"]},
+                "window_min": 1440, "max_per_window": 0},
+    "stale_scom": {"kind": "suppress", "match": {"source": "scom", "host_glob": "*-win-old-*",
+                                                 "title_contains": "Health Service unavailable",
+                                                 "severity_in": ["warning", "info"]},
+                   "window_min": 1440, "max_per_window": 0},
+    "zabbix_cpu_retune": {"kind": "retune", "source": "zabbix", "check": "cpu_util", "op": ">",
+                          "new_threshold": 90, "sustain_min": 5},
+}
+
+
+@pytest.mark.parametrize("name", sorted(USUAL_NOISE_RULES))
+@pytest.mark.parametrize("warm", [5, 40, 150])
+def test_each_usual_noise_rule_gives_a_visible_drop(tmp_path, name, warm):
+    """Accepting any one usual noise proposal must show a clear dent on Now: the drop figure
+    after a dozen simulated minutes is -15 % or better at any point of the demo."""
+    sim, rt, ft = _live(tmp_path)
+    _run(sim, ft, warm)
+    rt.activate(USUAL_NOISE_RULES[name], name)
+    _run(sim, ft, 12)
+    d = sim.drop_payload()
+    assert d["pct"] <= -15, (name, warm, d)
+
+
+def test_three_noise_rules_cut_the_strip_strongly(tmp_path):
+    sim, rt, ft = _live(tmp_path)
+    _run(sim, ft, 15)
+    p0 = sim.passed_alerts_total
+    _run(sim, ft, 30)
+    base = (sim.passed_alerts_total - p0) / 30
+    for name in ("ntp_retune", "test_vm", "stale_scom"):
+        rt.activate(USUAL_NOISE_RULES[name], name)
+    _run(sim, ft, 5)
+    p0 = sim.passed_alerts_total
+    _run(sim, ft, 30)
+    after = (sim.passed_alerts_total - p0) / 30
+    assert after < 0.65 * base, (base, after)
+
+
+def test_live_mix_families_fire_on_a_steady_rhythm():
+    """A live `mix` family's count over any window is within one of its expected value; the
+    history (no mix) keeps its Poisson draw and is byte-identical (test_sim checks determinism)."""
+    from app.sim.catalog import CUSTOMERS
+    from app.sim.generator import STREAMS, noise_events, parse_iso
+    cust = next(c for c in CUSTOMERS.values() if "zabbix" in c.sources)
+    s = next(x for x in STREAMS if x.name == "noise:zabbix_test_vm")
+    mix = {k: float(v) for k, v in SIM["live_mix"].items()}
+    t0 = parse_iso(SIM["live_start"])
+    for start_min, mins in ((0, 12), (37, 12), (200, 30)):
+        a, b = t0 + start_min * 60, t0 + (start_min + mins) * 60
+        evs = noise_events(cust, a, b, 60, (SIM["seed"], "live"), SIM["live_rate_multiplier"], mix)
+        firing = [e for e in evs if e["truth"]["pattern"] == s.name and e["status"] == "firing"]
+        expected = s.rate * mix[s.name] * mins / 60
+        assert abs(len(firing) - expected) <= 1.5, (start_min, len(firing), expected)
+
+
 def test_live_created_events_are_marked_and_truth_free(tmp_path):
     sim, rt, ft = _live(tmp_path)
     rt.activate({"kind": "precursor", "match": {"source": "checkmk", "title_contains": "NTP Time"}, "count": 2,

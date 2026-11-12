@@ -60,6 +60,9 @@ deploy/               EC2 kit, PREPARED NOT RUN (deploy/README.md)
 - Noise-drop figure (`LiveSim.drop_payload`): since the last accepted rule, firing alerts per
   minute reaching a human with the rule vs that plus what the rule removed (same minutes).
   A before/after comparison was tried first and was too noisy and skewed by scenario resolves.
+  The live stream over-weights the families rules remove (`sim.live_mix`: flat rate, steady
+  rhythm instead of Poisson; the history is untouched), so any one usual noise proposal shows
+  -15 to -22 % and three cut the bars by about half (`test_each_usual_noise_rule_gives_a_visible_drop`).
 
 ## Models
 
